@@ -1,7 +1,9 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../application/auth_state_provider.dart';
+import '../../../../app/core/constants/api_constants.dart';
 import '../../../../app/core/widgets/app_button.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/router/app_router.dart';
@@ -31,6 +33,40 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     await ref
         .read(authNotifierProvider.notifier)
         .login(_emailCtrl.text.trim(), _passCtrl.text);
+  }
+
+  Future<void> _forgotPassword() async {
+    final email = _emailCtrl.text.trim();
+
+    if (email.isEmpty || !email.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Digite seu e-mail antes de solicitar a redefinição.')),
+      );
+      return;
+    }
+
+    try {
+      final dio = Dio();
+      await dio.post(
+        '${ApiConstants.baseUrl}${ApiConstants.authForgotPassword}',
+        data: {'email': email},
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Se este e-mail estiver cadastrado, você receberá as instruções em breve.'),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Não foi possível processar. Tente novamente.')),
+        );
+      }
+    }
   }
 
   @override
@@ -138,13 +174,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Em breve: recuperação de senha'),
-                        ),
-                      );
-                    },
+                    onPressed: _forgotPassword,
                     child: const Text('Esqueci a senha'),
                   ),
                 ),
