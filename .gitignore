@@ -56,3 +56,4 @@ backend/api/personalização do agente do verdent.txt
 # Firebase secrets - não versionar
 lib/firebase_options.dart
 android/app/google-services.json
+backend/config/service_account.json
