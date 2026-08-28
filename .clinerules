@@ -1,0 +1,64 @@
+# Cline Operational Rules
+
+## Mandatory Startup Sequence
+
+Before ANY task, ALWAYS read:
+
+Core:
+- AGENTS.md
+- ARCHITECTURE.md
+- TASKS.md
+
+Rules:
+- .rules/cost_control.md
+- .rules/system_philosophy.md
+- .rules/failure_patterns.md
+- .rules/session_boot.md
+- .rules/operational_rules.md
+
+Memory:
+- .memory/completed_features.md
+- .memory/known_bugs.md
+- .memory/api_structure.md
+- .memory/flutter_structure.md
+
+Never skip context loading.
+
+---
+
+## Never
+
+- Refactor stable modules
+- Rewrite architecture
+- Modify unrelated files
+- Rename stable classes
+- Perform broad rewrites
+- Assume requirements
+- Improve code outside scope
+- Remove code without confirmation
+
+---
+
+## Always
+
+- Prefer minimal patches
+- Work on one module at a time
+- Identify impacted files first
+- Preserve compatibility
+- Keep responses concise
+- Stop when uncertain
+
+---
+
+## Workflow
+
+Analyze → Plan → Execute → Review → Stop
+
+---
+
+## Token Economy
+
+- Avoid full project rescans
+- Use memory first
+- Load only relevant files
+- Minimize token usage

@@ -1,0 +1,74 @@
+import '../../../../app/core/constants/status_constants.dart';
+
+class StudentSummary {
+  final String id;
+  final String name;
+  final String school;
+  final String residenceCep;
+  final String cicloEscolar;
+  final StudentStatus status;
+  final bool goToday;
+  final bool talkRequested;
+  final bool talkAcknowledgedByDriver;
+  final String? photoUrl;
+  final String driverName;
+  final String driverWhatsapp;
+  final bool ativo;
+  final String? lastUpdateTime;
+  final List<String>? stepTimes;
+
+  const StudentSummary({
+    required this.id,
+    required this.name,
+    required this.school,
+    required this.residenceCep,
+    required this.cicloEscolar,
+    required this.status,
+    required this.goToday,
+    required this.talkRequested,
+    required this.talkAcknowledgedByDriver,
+    this.photoUrl,
+    required this.driverName,
+    required this.driverWhatsapp,
+    required this.ativo,
+    this.lastUpdateTime,
+    this.stepTimes,
+  });
+
+  StudentSummary copyWith({
+    String? id,
+    String? name,
+    String? school,
+    String? residenceCep,
+    String? cicloEscolar,
+    StudentStatus? status,
+    bool? goToday,
+    bool? talkRequested,
+    bool? talkAcknowledgedByDriver,
+    String? photoUrl,
+    String? driverName,
+    String? driverWhatsapp,
+    bool? ativo,
+    String? lastUpdateTime,
+    List<String>? stepTimes,
+  }) {
+    return StudentSummary(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      school: school ?? this.school,
+      residenceCep: residenceCep ?? this.residenceCep,
+      cicloEscolar: cicloEscolar ?? this.cicloEscolar,
+      status: status ?? this.status,
+      goToday: goToday ?? this.goToday,
+      talkRequested: talkRequested ?? this.talkRequested,
+      talkAcknowledgedByDriver:
+          talkAcknowledgedByDriver ?? this.talkAcknowledgedByDriver,
+      photoUrl: photoUrl ?? this.photoUrl,
+      driverName: driverName ?? this.driverName,
+      driverWhatsapp: driverWhatsapp ?? this.driverWhatsapp,
+      ativo: ativo ?? this.ativo,
+      lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
+      stepTimes: stepTimes ?? this.stepTimes,
+    );
+  }
+}

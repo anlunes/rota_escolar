@@ -1,0 +1,11 @@
+<IfModule mod_headers.c>
+    Header always set Access-Control-Allow-Origin "https://app.balcao2ponto0.com.br"
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+</IfModule>
+
+RewriteEngine On
+
+# mantém Authorization no PHP (correto para Apache)
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
