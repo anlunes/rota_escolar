@@ -57,13 +57,12 @@ $bairrosPendentes = $pdo->query("
 try {
     $escolasPendentes = $pdo->query("
         SELECT escola_id, nome,
-               COALESCE(bairro_nome, CONCAT('Bairro #', bairro_id)) AS bairro_nome,
-               COALESCE(endereco, '') AS endereco,
-               COALESCE(cep, '')     AS cep,
-               COALESCE(cidade, '')  AS cidade,
-               COALESCE(estado, '')  AS estado,
-               COALESCE(administracao, '')   AS administracao,
-               COALESCE(nivel_escolar, '')  AS nivel_escolar
+               COALESCE(bairro, '')      AS bairro,
+               COALESCE(logradouro, '')  AS logradouro,
+               COALESCE(numero, '')      AS numero,
+               COALESCE(cep, '')         AS cep,
+               COALESCE(municipio, '')   AS municipio,
+               COALESCE(estado, '')      AS estado
         FROM escolas
         WHERE status = 'pendente'
         ORDER BY escola_id DESC
@@ -210,20 +209,18 @@ try {
     <?php else: ?>
       <table>
         <thead>
-          <tr><th>#</th><th>Escola</th><th>Bairro</th><th>Endereço</th><th>Adm.</th><th>Nível</th><th>Ações</th></tr>
+          <tr><th>#</th><th>Escola</th><th>Bairro</th><th>Endereço</th><th>Ações</th></tr>
         </thead>
         <tbody>
           <?php foreach ($escolasPendentes as $e): ?>
           <tr>
             <td><?= $e['escola_id'] ?></td>
             <td><?= htmlspecialchars($e['nome']) ?></td>
-            <td><?= htmlspecialchars($e['bairro_nome']) ?></td>
+            <td><?= htmlspecialchars($e['bairro']) ?></td>
             <td style="font-size:.85rem">
-              <?= htmlspecialchars($e['endereco']) ?>
-              <?php if ($e['cep']): ?><br><span style="color:#888"><?= htmlspecialchars($e['cep']) ?> — <?= htmlspecialchars($e['cidade']) ?>/<?= htmlspecialchars($e['estado']) ?></span><?php endif; ?>
+              <?= htmlspecialchars(trim($e['logradouro'] . ' ' . $e['numero'])) ?>
+              <?php if ($e['cep']): ?><br><span style="color:#888"><?= htmlspecialchars($e['cep']) ?> — <?= htmlspecialchars($e['municipio']) ?>/<?= htmlspecialchars($e['estado']) ?></span><?php endif; ?>
             </td>
-            <td><?= htmlspecialchars($e['administracao']) ?></td>
-            <td style="font-size:.85rem"><?= htmlspecialchars($e['nivel_escolar']) ?></td>
             <td>
               <div class="actions">
                 <form method="POST" style="display:inline">

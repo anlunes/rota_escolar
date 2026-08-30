@@ -1,6 +1,14 @@
 -- ============================================================
 -- Migration 002 - Schema completo Rota Escolar
 -- Banco: rotaesc-bd
+-- ATENÇÃO: este arquivo reflete o schema original e pode conter
+-- definições desatualizadas. Correções aplicadas posteriormente:
+--   - usuarios.role: ENUM alterado para ('responsavel','motorista','admin')
+--     (era 'guardian','driver','admin') — corrigido via SQL manual em 2026-08-28
+--   - escolas: colunas bairro_id, bairro_nome, endereco, cidade, administracao,
+--     nivel_escolar removidas; substituídas por bairro, logradouro, numero, municipio
+--   - escolas.aprovado + escolas.status: adicionados via migration 003
+-- Usar apenas como referência histórica, não para recriar o banco do zero.
 -- ============================================================
 
 SET NAMES utf8mb4;

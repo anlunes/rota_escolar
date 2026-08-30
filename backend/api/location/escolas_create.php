@@ -2,7 +2,8 @@
 /**
  * POST /api/location/escolas_create.php
  * Cria uma nova escola com status pendente (aguarda aprovação do admin).
- * Body JSON: { "nome": "E.E. João Silva", "bairro_id": 5, "bairro_nome": "Centro" }
+ * Body JSON: { "nome": "E.E. João Silva", "bairro_nome": "Centro",
+ *              "cep": "...", "endereco": "...", "cidade": "...", "estado": "..." }
  */
 
 ob_start();
@@ -32,27 +33,25 @@ function jsonErr($message, $status = 400) {
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { ob_end_clean(); http_response_code(200); exit; }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonErr('Método não permitido.', 405);
 
-$body          = json_decode(file_get_contents('php://input'), true);
-$nome          = trim($body['nome']          ?? '');
-$bairroId      = (int)($body['bairro_id']    ?? 0);
-$bairroNome    = trim($body['bairro_nome']   ?? '') ?: null;
-$cep           = trim($body['cep']           ?? '') ?: null;
-$endereco      = trim($body['endereco']      ?? '') ?: null;
-$cidade        = trim($body['cidade']        ?? '') ?: null;
-$estado        = trim($body['estado']        ?? '') ?: null;
-$administracao = trim($body['administracao'] ?? '') ?: null;
-$nivelEscolar  = trim($body['nivel_escolar'] ?? '') ?: null;
+$body = json_decode(file_get_contents('php://input'), true);
 
-if (!$nome || !$bairroId) jsonErr('nome e bairro_id são obrigatórios.', 400);
+$nome      = trim($body['nome']       ?? '');
+$bairro    = trim($body['bairro_nome'] ?? $body['bairro'] ?? '') ?: null;
+$cep       = trim($body['cep']        ?? '') ?: null;
+$logradouro = trim($body['endereco']  ?? $body['logradouro'] ?? '') ?: null;
+$municipio = trim($body['cidade']     ?? $body['municipio'] ?? '') ?: null;
+$estado    = trim($body['estado']     ?? '') ?: null;
+
+if (!$nome) jsonErr('nome é obrigatório.', 400);
 
 try {
     $pdo = Database::getInstance();
 
-    // Verifica se já existe nesse bairro
+    // Verifica duplicata pelo nome (case-insensitive)
     $check = $pdo->prepare(
-        "SELECT escola_id, status FROM escolas WHERE bairro_id = ? AND LOWER(nome) = LOWER(?)"
+        "SELECT escola_id, status FROM escolas WHERE LOWER(nome) = LOWER(?) LIMIT 1"
     );
-    $check->execute([$bairroId, $nome]);
+    $check->execute([$nome]);
     $existing = $check->fetch();
 
     if ($existing) {
@@ -65,10 +64,10 @@ try {
     }
 
     $stmt = $pdo->prepare(
-        "INSERT INTO escolas (nome, bairro_id, bairro_nome, cep, endereco, cidade, municipio, estado, administracao, nivel_escolar, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente')"
+        "INSERT INTO escolas (nome, bairro, logradouro, municipio, estado, cep, aprovado, status)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 'pendente')"
     );
-    $stmt->execute([$nome, $bairroId, $bairroNome, $cep, $endereco, $cidade, $cidade, $estado, $administracao, $nivelEscolar]);
+    $stmt->execute([$nome, $bairro, $logradouro, $municipio, $estado, $cep]);
 
     jsonOk(
         ['id' => (int)$pdo->lastInsertId(), 'status' => 'pendente'],
