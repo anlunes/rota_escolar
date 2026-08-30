@@ -93,8 +93,21 @@ class DriverHomeState {
   List<StudentInRoute> get todayStudents =>
       students.where((s) => s.goToday).toList();
 
-  List<StudentInRoute> get studentsForCurrentPeriod =>
-      students.where((s) => s.participatesIn(selectedPeriod)).toList();
+  List<StudentInRoute> get studentsForCurrentPeriod {
+    final outbound = selectedPeriod.isOutbound;
+    return students.where((s) {
+      if (!s.participatesIn(selectedPeriod)) return false;
+      // Ida: mostra apenas alunos aguardando ou a caminho (some ao chegar na escola)
+      // Volta: mostra apenas alunos na escola ou a caminho de casa (some ao chegar em casa)
+      if (outbound) {
+        return s.status == StudentStatus.waitingVan ||
+               s.status == StudentStatus.toSchool;
+      } else {
+        return s.status == StudentStatus.atSchool ||
+               s.status == StudentStatus.toHome;
+      }
+    }).toList();
+  }
 
   int get talkRequestCount =>
       students.where((s) => s.talkRequested && !s.talkAcknowledged).length;

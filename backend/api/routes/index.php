@@ -16,6 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') Response::methodNotAllowed();
 
+date_default_timezone_set('America/Sao_Paulo');
+
 $auth = AuthMiddleware::require();
 $uid  = $auth['sub'] ?? $auth['user_id'] ?? '';
 
