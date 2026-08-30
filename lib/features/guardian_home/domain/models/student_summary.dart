@@ -14,6 +14,13 @@ class StudentSummary {
   final String driverName;
   final String driverWhatsapp;
   final bool ativo;
+  final String vanCode;
+  final String logradouro;
+  final String numero;
+  final String complemento;
+  final String bairro;
+  final String turno;
+  final String dataNascimento; // ISO: yyyy-MM-dd
   final String? lastUpdateTime;
   final List<String>? stepTimes;
 
@@ -31,9 +38,19 @@ class StudentSummary {
     required this.driverName,
     required this.driverWhatsapp,
     required this.ativo,
+    this.vanCode = '',
+    this.logradouro = '',
+    this.numero = '',
+    this.complemento = '',
+    this.bairro = '',
+    this.turno = '',
+    this.dataNascimento = '',
     this.lastUpdateTime,
     this.stepTimes,
   });
+
+  /// Aluno cadastrou van_code mas o motorista ainda não aceitou
+  bool get awaitingDriverAccept => vanCode.isNotEmpty && driverName.isEmpty;
 
   StudentSummary copyWith({
     String? id,
@@ -49,6 +66,13 @@ class StudentSummary {
     String? driverName,
     String? driverWhatsapp,
     bool? ativo,
+    String? vanCode,
+    String? logradouro,
+    String? numero,
+    String? complemento,
+    String? bairro,
+    String? turno,
+    String? dataNascimento,
     String? lastUpdateTime,
     List<String>? stepTimes,
   }) {
@@ -67,6 +91,13 @@ class StudentSummary {
       driverName: driverName ?? this.driverName,
       driverWhatsapp: driverWhatsapp ?? this.driverWhatsapp,
       ativo: ativo ?? this.ativo,
+      vanCode: vanCode ?? this.vanCode,
+      logradouro: logradouro ?? this.logradouro,
+      numero: numero ?? this.numero,
+      complemento: complemento ?? this.complemento,
+      bairro: bairro ?? this.bairro,
+      turno: turno ?? this.turno,
+      dataNascimento: dataNascimento ?? this.dataNascimento,
       lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
       stepTimes: stepTimes ?? this.stepTimes,
     );

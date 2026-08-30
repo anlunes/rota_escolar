@@ -112,9 +112,10 @@ class DriverRouteTab extends ConsumerWidget {
                     return _StudentRouteCard(
                       key: ValueKey(student.id),
                       student: student,
+                      period: state.selectedPeriod,
                       position: index + 1,
                       onStatusNext: () {
-                        final next = _nextStatus(student.status);
+                        final next = _nextStatus(student.status, state.selectedPeriod);
                         if (next != null) {
                           notifier.updateStudentStatus(student.id, next);
                         }
@@ -133,14 +134,22 @@ class DriverRouteTab extends ConsumerWidget {
     );
   }
 
-  StudentStatus? _nextStatus(StudentStatus current) {
-    return switch (current) {
-      StudentStatus.waitingVan => StudentStatus.toSchool,
-      StudentStatus.toSchool => StudentStatus.atSchool,
-      StudentStatus.atSchool => StudentStatus.toHome,
-      StudentStatus.toHome => StudentStatus.atHome,
-      StudentStatus.atHome => null,
-    };
+  StudentStatus? _nextStatus(StudentStatus current, RoutePeriod period) {
+    if (period.isOutbound) {
+      // Ida: casa → rota ida → escola (para no atSchool)
+      return switch (current) {
+        StudentStatus.waitingVan => StudentStatus.toSchool,
+        StudentStatus.toSchool   => StudentStatus.atSchool,
+        _                        => null,
+      };
+    } else {
+      // Volta: escola → rota volta → em casa
+      return switch (current) {
+        StudentStatus.atSchool => StudentStatus.toHome,
+        StudentStatus.toHome   => StudentStatus.atHome,
+        _                      => null,
+      };
+    }
   }
 
   Future<void> _openWhatsApp(String phone) async {
@@ -153,6 +162,7 @@ class DriverRouteTab extends ConsumerWidget {
 
 class _StudentRouteCard extends StatelessWidget {
   final StudentInRoute student;
+  final RoutePeriod period;
   final int position;
   final VoidCallback onStatusNext;
   final VoidCallback onTalkAck;
@@ -162,6 +172,7 @@ class _StudentRouteCard extends StatelessWidget {
   const _StudentRouteCard({
     super.key,
     required this.student,
+    required this.period,
     required this.position,
     required this.onStatusNext,
     required this.onTalkAck,
@@ -169,210 +180,188 @@ class _StudentRouteCard extends StatelessWidget {
     required this.onRemoveFromRoute,
   });
 
+  /// Destino contextual: ida → escola, volta → casa
+  String get _destinationLabel {
+    if (period.isOutbound) return student.school.isNotEmpty ? student.school : 'Escola';
+    return student.address.isNotEmpty ? student.address : 'Endereço não informado';
+  }
+
+  IconData get _destinationIcon =>
+      period.isOutbound ? Icons.school_outlined : Icons.home_outlined;
+
+  /// Texto do botão avançar de acordo com o período e o status atual
+  String get _advanceLabel {
+    if (period.isOutbound) {
+      return switch (student.status) {
+        StudentStatus.waitingVan => 'Embarcou',
+        StudentStatus.toSchool   => 'Chegou',
+        _                        => '',
+      };
+    } else {
+      return switch (student.status) {
+        StudentStatus.atSchool => 'Saiu',
+        StudentStatus.toHome   => 'Em casa',
+        _                      => '',
+      };
+    }
+  }
+
+  /// Pode avançar se o status atual é válido para o período selecionado
+  bool get _canAdvanceInPeriod {
+    if (period.isOutbound) {
+      return student.status == StudentStatus.waitingVan ||
+             student.status == StudentStatus.toSchool;
+    } else {
+      return student.status == StudentStatus.atSchool ||
+             student.status == StudentStatus.toHome;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final canAdvance = student.status != StudentStatus.atHome;
-    final ringColor =
-        student.paymentPaid ? AppColors.success : AppColors.error;
+    final ringColor = student.paymentPaid ? AppColors.success : AppColors.error;
+    final nameInitial = student.name.isNotEmpty ? student.name[0].toUpperCase() : '?';
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 6),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Linha principal ──────────────────────────────────────
             Row(
               children: [
-                // Circular photo with payment-status ring
+                // Avatar com anel de pagamento
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: ringColor, width: 2.5),
+                    border: Border.all(color: ringColor, width: 2),
                   ),
                   child: CircleAvatar(
-                    radius: 22,
+                    radius: 18,
                     backgroundColor: AppColors.primaryLight,
                     backgroundImage: student.photoUrl != null
                         ? NetworkImage(student.photoUrl!)
                         : null,
                     child: student.photoUrl == null
-                        ? Text(
-                            student.name[0].toUpperCase(),
+                        ? Text(nameInitial,
                             style: const TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: AppColors.primaryDark),
-                          )
+                                fontSize: 14,
+                                color: AppColors.primaryDark))
                         : null,
                   ),
                 ),
-                const SizedBox(width: 10),
-                // Name + school
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              student.name,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                                color: student.goToday
-                                    ? AppColors.text
-                                    : AppColors.textDisabled,
-                              ),
-                            ),
-                          ),
-                          if (!student.goToday) ...[
-                            const SizedBox(width: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.textDisabled.withAlpha(60),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Text(
-                                'Não vai hoje',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.red,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      Text(
-                        student.school,
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.textSecondary),
-                      ),
-                      // Payment status indicator
-                      Row(
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: ringColor,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            student.paymentPaid
-                                ? 'Pgto em dia'
-                                : 'Pgto pendente',
-                            style: TextStyle(
-                                fontSize: 10,
-                                color: ringColor,
-                                fontWeight: FontWeight.w500),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                // Remove from route button
-                IconButton(
-                  onPressed: onRemoveFromRoute,
-                  icon: const Icon(Icons.remove_circle_outline,
-                      color: AppColors.textSecondary, size: 18),
-                  tooltip: 'Remover desta rota',
-                  style: IconButton.styleFrom(
-                    padding: const EdgeInsets.all(4),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // Address
-            Row(
-              children: [
-                const Icon(Icons.location_on_outlined,
-                    size: 14, color: AppColors.textSecondary),
-                const SizedBox(width: 4),
+                const SizedBox(width: 8),
+                // Nome
                 Expanded(
                   child: Text(
-                    student.address,
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.textSecondary),
+                    student.name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: student.goToday ? AppColors.text : AppColors.textDisabled,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            // Status + Actions row
-            Row(
-              children: [
-                StatusChip(status: student.status),
-                const Spacer(),
-                // Talk request alert
+                // Badge "Não vai hoje"
+                if (!student.goToday)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withAlpha(20),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text('Não vai',
+                        style: TextStyle(
+                            fontSize: 10, color: AppColors.error, fontWeight: FontWeight.w600)),
+                  ),
+                // Talk request badge
                 if (student.talkRequested)
                   GestureDetector(
                     onTap: onTalkAck,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      margin: const EdgeInsets.only(left: 4),
                       decoration: BoxDecoration(
                         color: AppColors.warning.withAlpha(30),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: AppColors.warning),
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.chat, size: 14, color: AppColors.warning),
-                          SizedBox(width: 4),
-                          Text(
-                            'Quer falar',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.warning,
-                                fontWeight: FontWeight.w600),
-                          ),
+                          Icon(Icons.chat, size: 12, color: AppColors.warning),
+                          SizedBox(width: 3),
+                          Text('Falar', style: TextStyle(fontSize: 10, color: AppColors.warning, fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ),
                   ),
+                // Remover
+                IconButton(
+                  onPressed: onRemoveFromRoute,
+                  icon: const Icon(Icons.remove_circle_outline, size: 16, color: AppColors.textDisabled),
+                  tooltip: 'Remover desta rota',
+                  style: IconButton.styleFrom(padding: const EdgeInsets.all(4)),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 4),
+
+            // ── Destino contextual ───────────────────────────────────
+            Row(
+              children: [
+                Icon(_destinationIcon, size: 13, color: AppColors.textSecondary),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    _destinationLabel,
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 6),
+
+            // ── Status + Ações ───────────────────────────────────────
+            Row(
+              children: [
+                StatusChip(status: student.status),
+                const Spacer(),
                 // WhatsApp
                 IconButton(
                   onPressed: onWhatsApp,
                   icon: SvgPicture.asset(
                     'assets/icons/whatsapp.svg',
-                    width: 20,
-                    height: 20,
-                    colorFilter: const ColorFilter.mode(
-                        Color(0xFF25D366), BlendMode.srcIn),
+                    width: 18,
+                    height: 18,
+                    colorFilter: const ColorFilter.mode(Color(0xFF25D366), BlendMode.srcIn),
                   ),
                   tooltip: 'WhatsApp ${student.guardianName}',
                   style: IconButton.styleFrom(
-                    backgroundColor:
-                        const Color(0xFF25D366).withAlpha(20),
-                    padding: const EdgeInsets.all(6),
+                    backgroundColor: const Color(0xFF25D366).withAlpha(20),
+                    padding: const EdgeInsets.all(5),
                   ),
                 ),
-                const SizedBox(width: 4),
-                // Next status
-                if (student.goToday && canAdvance)
+                if (student.goToday && _canAdvanceInPeriod) ...[
+                  const SizedBox(width: 4),
                   ElevatedButton(
                     onPressed: onStatusNext,
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: const Text('Avançar',
-                        style: TextStyle(fontSize: 12)),
+                    child: Text(_advanceLabel, style: const TextStyle(fontSize: 12)),
                   ),
+                ],
               ],
             ),
           ],

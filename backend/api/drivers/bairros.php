@@ -45,6 +45,10 @@ try {
         $stmt->execute([$motoristaId]);
         $bairros = $stmt->fetchAll();
 
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM alunos WHERE motorista_id = ? AND ativo = 1");
+        $countStmt->execute([$motoristaId]);
+        $alunosAtivos = (int) $countStmt->fetchColumn();
+
         Response::success([
             'bairros'           => $bairros,
             'estado_id'         => $motorista['pref_estado_id'],
@@ -52,6 +56,7 @@ try {
             'van_code'          => $motorista['van_code'],
             'whatsapp'          => $motorista['whatsapp'],
             'telefone_cadastro' => $motorista['telefone'],
+            'alunos_ativos'     => $alunosAtivos,
         ]);
     }
 

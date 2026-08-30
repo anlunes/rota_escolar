@@ -1,9 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/students_repository.dart';
 import '../domain/models/student_summary.dart';
 import '../../../../app/core/constants/status_constants.dart';
-import '../../driver_home/application/driver_home_provider.dart';
+import '../../../../app/core/services/rtdb_service.dart';
 
 class GuardianHomeState {
   final List<StudentSummary> students;
@@ -32,10 +34,19 @@ class GuardianHomeState {
 class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
   final Ref _ref;
   final StudentsRepository _studentsRepository;
+  final Map<String, StreamSubscription<StudentStatus?>> _statusSubs = {};
 
   GuardianHomeNotifier(this._ref, this._studentsRepository)
       : super(const GuardianHomeState(students: [])) {
     loadStudents();
+  }
+
+  @override
+  void dispose() {
+    for (final sub in _statusSubs.values) {
+      sub.cancel();
+    }
+    super.dispose();
   }
 
   Future<void> loadStudents() async {
@@ -43,10 +54,50 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
     try {
       final students = await _studentsRepository.fetchStudents();
       state = state.copyWith(students: students, isLoading: false);
+      _subscribeToRtdbStatus(students);
     } catch (e) {
       debugPrint('[GuardianHomeNotifier] loadStudents error: $e');
       state = state.copyWith(isLoading: false);
     }
+  }
+
+  /// Subscreve ao Firebase RTDB para atualizações de status em tempo real.
+  void _subscribeToRtdbStatus(List<StudentSummary> students) {
+    // Cancela subscrições antigas
+    for (final sub in _statusSubs.values) {
+      sub.cancel();
+    }
+    _statusSubs.clear();
+
+    for (final student in students) {
+      if (!student.ativo || student.driverName.isEmpty || student.driverName == 'Sem motorista') {
+        continue; // Só escuta alunos que já têm motorista
+      }
+
+      _statusSubs[student.id] = RtdbService.instance
+          .watchStatus(student.id)
+          .listen((newStatus) {
+        if (newStatus == null || !mounted) return;
+        final now = _formattedNow();
+        state = state.copyWith(
+          students: state.students.map((s) {
+            if (s.id == student.id) {
+              return s.copyWith(status: newStatus, lastUpdateTime: now);
+            }
+            return s;
+          }).toList(),
+        );
+      }, onError: (e) {
+        debugPrint('[GuardianHomeNotifier] RTDB watchStatus error (${student.id}): $e');
+      });
+    }
+  }
+
+  String _formattedNow() {
+    final now = DateTime.now();
+    final h = now.hour.toString().padLeft(2, '0');
+    final m = now.minute.toString().padLeft(2, '0');
+    return '$h:$m';
   }
 
   void toggleGoToday(String studentId) {
@@ -80,6 +131,33 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
     state = state.copyWith(students: updated);
   }
 
+  Future<void> deleteStudent(String studentId, {void Function(String)? onError}) async {
+    try {
+      await _studentsRepository.deleteStudent(studentId);
+      // Marca como inativo no estado local (fica visível para reativar)
+      final updated = state.students.map<StudentSummary>((s) {
+        if (s.id == studentId) return s.copyWith(ativo: false);
+        return s;
+      }).toList();
+      state = state.copyWith(students: updated);
+    } catch (e) {
+      onError?.call(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> reactivateStudent(String studentId, {void Function(String)? onError}) async {
+    try {
+      await _studentsRepository.reactivateStudent(studentId);
+      final updated = state.students.map<StudentSummary>((s) {
+        if (s.id == studentId) return s.copyWith(ativo: true);
+        return s;
+      }).toList();
+      state = state.copyWith(students: updated);
+    } catch (e) {
+      onError?.call(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   void updateStudentInfo({
     required String studentId,
     required String name,
@@ -104,10 +182,19 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
   void registerChild({
     required String name,
     required String school,
+    int? escolaId,
     required String residenceCep,
+    String? logradouro,
+    String? numero,
+    String? complemento,
+    String? bairro,
+    String? cicloEscolar,
+    String? turno,
+    String? dataNascimento,
     String? vanCode,
     String? existingId,
     String? photoUrl,
+    void Function(String)? onError,
   }) {
     final id = existingId ?? 'st_${DateTime.now().millisecondsSinceEpoch}';
     final existing = state.students.any((s) => s.id == id);
@@ -117,7 +204,7 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
       name: name,
       school: school,
       residenceCep: residenceCep,
-      cicloEscolar: 'A definir',
+      cicloEscolar: cicloEscolar ?? 'A definir',
       status: StudentStatus.waitingVan,
       goToday: false,
       talkRequested: false,
@@ -136,42 +223,40 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
     }
     state = state.copyWith(students: updated);
 
-    // Save to API first and update state with real ID
-    _studentsRepository
-        .saveStudent(
+    _studentsRepository.saveStudent(
       name: name,
       school: school,
+      escolaId: escolaId,
       residenceCep: residenceCep,
+      logradouro: logradouro,
+      numero: numero,
+      complemento: complemento,
+      bairro: bairro,
+      cicloEscolar: cicloEscolar,
+      turno: turno,
+      dataNascimento: dataNascimento,
       vanCode: vanCode,
       existingId: existingId,
-    )
-        .then((savedStudent) {
+    ).then((savedStudent) {
       if (savedStudent != null) {
-        // Update state with real ID from API
-        final updated = state.students.map((s) {
-          if (s.id == id) return savedStudent;
-          return s;
-        }).toList();
+        final updated = state.students
+            .map((s) => s.id == id ? savedStudent : s)
+            .toList();
         state = state.copyWith(students: updated);
+      } else {
+        // Remove da lista local se a API falhou
+        state = state.copyWith(
+          students: state.students.where((s) => s.id != id).toList(),
+        );
       }
     }).catchError((e) {
-      // API unavailable — local state already updated with mock ID
+      debugPrint('[GuardianHomeNotifier] registerChild error: $e');
+      state = state.copyWith(
+        students: state.students.where((s) => s.id != id).toList(),
+      );
+      onError?.call(e.toString().replaceFirst('Exception: ', ''));
       return null;
     });
-
-    // If vanCode provided, send opportunity to driver provider
-    if (vanCode != null && vanCode.trim().isNotEmpty) {
-      final opp = CandidateOpportunity(
-        id: 'opp_$id',
-        studentName: name,
-        guardianName: 'Responsável',
-        guardianWhatsapp: '11999999999',
-        address: 'CEP: $residenceCep',
-        school: school,
-        period: 'A definir',
-      );
-      _ref.read(driverHomeProvider.notifier).addOpportunity(opp);
-    }
   }
 }
 

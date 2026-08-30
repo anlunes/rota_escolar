@@ -14,15 +14,22 @@ if ($_SERVER['REQUEST_METHOD'] !== 'PUT') Response::methodNotAllowed();
 $auth = AuthMiddleware::require();
 $uid  = $auth['sub'] ?? $auth['user_id'] ?? '';
 
-$body   = json_decode(file_get_contents('php://input'), true) ?? [];
-$id     = (int)($body['id']           ?? 0);
-$name   = trim($body['name']          ?? '');
-$school = trim($body['school']        ?? '');
-$rcep   = trim($body['residence_cep'] ?? '');
-$ciclo  = trim($body['ciclo_escolar'] ?? '');
+$body        = json_decode(file_get_contents('php://input'), true) ?? [];
+$id          = (int)($body['id']                ?? 0);
+$name        = trim($body['name']               ?? '');
+$school      = trim($body['school']             ?? '');
+$escolaIdIn  = isset($body['escola_id']) ? (int)$body['escola_id'] : null;
+$rcep        = trim($body['residence_cep']      ?? '');
+$logradouro  = trim($body['logradouro']         ?? '');
+$numero      = trim($body['numero_residencia']  ?? '');
+$complemento = trim($body['complemento']        ?? '');
+$bairro      = trim($body['bairro_residencia']  ?? '');
+$ciclo       = trim($body['ciclo_escolar']      ?? '');
+$turno       = trim($body['turno']              ?? '');
+$dataNasc    = trim($body['data_nascimento']    ?? '');
+$vanCode     = trim($body['van_code']           ?? '');
 
 if (!$id) Response::error('id é obrigatório.');
-if (!$school) Response::error('Escola é obrigatória.');
 
 try {
     $pdo = Database::getInstance();
@@ -36,30 +43,38 @@ try {
     $chk->execute([$id, $uid]);
     if (!$chk->fetch()) Response::error('Aluno não encontrado ou sem permissão.', 403);
 
-    // Buscar/criar escola
-    $escStmt = $pdo->prepare("
-        SELECT escola_id FROM escolas WHERE LOWER(nome) = LOWER(?) LIMIT 1
-    ");
-    $escStmt->execute([$school]);
-    $escola = $escStmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!empty($escola['escola_id'])) {
-        $escolaId = $escola['escola_id'];
-    } else {
-        $escolaId = time() . rand(100, 999);
-        $createSchool = $pdo->prepare("
-            INSERT INTO escolas (escola_id, nome, municipio, estado, administracao, status, created_at, updated_at)
-            VALUES (?, ?, '', '', 'municipal', 'pendente', NOW(), NOW())
-        ");
-        $createSchool->execute([$escolaId, $school]);
+    // Resolve escola_id
+    $escolaId = null;
+    if ($escolaIdIn) {
+        $escolaId = $escolaIdIn;
+    } elseif ($school) {
+        $escStmt = $pdo->prepare("SELECT escola_id FROM escolas WHERE LOWER(nome) = LOWER(?) LIMIT 1");
+        $escStmt->execute([$school]);
+        $esc = $escStmt->fetch(PDO::FETCH_ASSOC);
+        if (!empty($esc['escola_id'])) {
+            $escolaId = $esc['escola_id'];
+        } else {
+            $pdo->prepare("
+                INSERT INTO escolas (nome, municipio, estado, administracao, status, aprovado, created_at, updated_at)
+                VALUES (?, '', '', 'municipal', 'pendente', 0, NOW(), NOW())
+            ")->execute([$school]);
+            $escolaId = (int)$pdo->lastInsertId();
+        }
     }
 
     $fields = [];
     $params = [];
-    if ($name)   { $fields[] = 'nome = ?';          $params[] = $name; }
-    if ($school) { $fields[] = 'escola_id = ?';     $params[] = $escolaId; }
-    if ($rcep)   { $fields[] = 'cep_residencia = ?';$params[] = $rcep; }
-    if ($ciclo)  { $fields[] = 'ciclo_escolar = ?'; $params[] = $ciclo; }
+    if ($name)        { $fields[] = 'nome = ?';              $params[] = $name; }
+    if ($escolaId)    { $fields[] = 'escola_id = ?';         $params[] = $escolaId; }
+    if ($rcep)        { $fields[] = 'cep_residencia = ?';    $params[] = $rcep; }
+    if ($logradouro)  { $fields[] = 'logradouro = ?';        $params[] = $logradouro; }
+    if ($numero)      { $fields[] = 'numero_residencia = ?'; $params[] = $numero; }
+    if ($complemento) { $fields[] = 'complemento = ?';       $params[] = $complemento; }
+    if ($bairro)      { $fields[] = 'bairro_residencia = ?'; $params[] = $bairro; }
+    if ($ciclo)       { $fields[] = 'ciclo_escolar = ?';     $params[] = $ciclo; }
+    if ($turno)       { $fields[] = 'turno = ?';             $params[] = $turno; }
+    if ($dataNasc)    { $fields[] = 'data_nascimento = ?';   $params[] = $dataNasc; }
+    if ($vanCode)     { $fields[] = 'van_code = ?';          $params[] = $vanCode; }
     $fields[] = 'updated_at = NOW()';
     $params[] = $id;
 
@@ -72,8 +87,16 @@ try {
             a.aluno_id AS id,
             a.nome AS name,
             COALESCE(e.nome, 'Sem escola') AS school,
+            a.escola_id,
             COALESCE(a.cep_residencia, '') AS residence_cep,
+            COALESCE(a.logradouro, '') AS logradouro,
+            COALESCE(a.numero_residencia, '') AS numero_residencia,
+            COALESCE(a.complemento, '') AS complemento,
+            COALESCE(a.bairro_residencia, '') AS bairro_residencia,
             COALESCE(a.ciclo_escolar, '') AS ciclo_escolar,
+            COALESCE(a.turno, '') AS turno,
+            COALESCE(a.data_nascimento, '') AS data_nascimento,
+            COALESCE(a.van_code, '') AS van_code,
             COALESCE(rda.status_atual, 'waiting_van') AS status_atual,
             CAST(COALESCE(rda.vai_hoje, 1) AS SIGNED) AS vai_hoje,
             CAST(COALESCE(rda.talk_requested, 0) AS SIGNED) AS talk_requested,

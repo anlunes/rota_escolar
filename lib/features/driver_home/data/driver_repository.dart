@@ -87,6 +87,57 @@ class DriverRepository {
     }
   }
 
+  /// Lista candidaturas pendentes (alunos com van_code do motorista, sem motorista_id).
+  Future<List<CandidateOpportunity>> fetchOpportunities() async {
+    try {
+      final response = await _api.get(ApiConstants.driverOpportunities);
+      final data = response.data;
+      if (data is Map && data['success'] == true) {
+        final list = data['data'] as List<dynamic>;
+        return list
+            .map((item) => _opportunityFromJson(item as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('[DriverRepository] fetchOpportunities error: $e');
+      return [];
+    }
+  }
+
+  /// Aceita ou recusa uma candidatura.
+  Future<bool> respondOpportunity(int alunoId, String action) async {
+    try {
+      final response = await _api.post(
+        ApiConstants.driverOpportunities,
+        data: {'action': action, 'aluno_id': alunoId},
+      );
+      final data = response.data;
+      return data is Map && data['success'] == true;
+    } catch (e) {
+      debugPrint('[DriverRepository] respondOpportunity error: $e');
+      return false;
+    }
+  }
+
+  /// Persiste o novo status do aluno no MySQL (fire-and-forget).
+  Future<bool> updateStudentStatus(String studentId, StudentStatus status) async {
+    try {
+      final response = await _api.post(
+        ApiConstants.routesUpdateStatus,
+        data: {
+          'aluno_id': int.tryParse(studentId) ?? 0,
+          'status': status.value,
+        },
+      );
+      final data = response.data;
+      return data is Map && data['success'] == true;
+    } catch (e) {
+      debugPrint('[DriverRepository] updateStudentStatus error: $e');
+      return false;
+    }
+  }
+
   /// Marca mensalidade como paga em dinheiro.
   Future<bool> markPayment(String financialId) async {
     try {
@@ -109,6 +160,16 @@ class DriverRepository {
 
   StudentInRoute _studentFromJson(Map<String, dynamic> json) {
     debugPrint('[DriverRepository] PARSING STUDENT: $json');
+
+    // Mapeia turno do aluno para os períodos de rota que ele participa
+    final turno = json['turno']?.toString().toLowerCase() ?? '';
+    List<RoutePeriod>? activeRoutes;
+    if (turno == 'manhã' || turno == 'manha' || turno == 'morning') {
+      activeRoutes = [RoutePeriod.morningOutbound, RoutePeriod.morningReturn];
+    } else if (turno == 'tarde' || turno == 'afternoon') {
+      activeRoutes = [RoutePeriod.afternoonOutbound, RoutePeriod.afternoonReturn];
+    }
+    // integral ou vazio = null (aparece em todos os períodos)
 
     return StudentInRoute(
       id: json['id']?.toString() ?? '',
@@ -137,6 +198,21 @@ class DriverRepository {
 
       paymentPaid:
           int.tryParse(json['payment_paid'].toString()) == 1,
+
+      activeRoutes: activeRoutes,
+    );
+  }
+
+  CandidateOpportunity _opportunityFromJson(Map<String, dynamic> json) {
+    return CandidateOpportunity(
+      id: json['aluno_id']?.toString() ?? '',
+      alunoId: (json['aluno_id'] as num?)?.toInt() ?? 0,
+      studentName: json['student_name']?.toString() ?? '',
+      guardianName: json['guardian_name']?.toString() ?? '',
+      guardianWhatsapp: json['guardian_whatsapp']?.toString() ?? '',
+      address: json['address']?.toString() ?? '',
+      school: json['school']?.toString() ?? '',
+      period: json['period']?.toString() ?? '',
     );
   }
 

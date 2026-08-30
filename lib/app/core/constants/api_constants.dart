@@ -38,6 +38,7 @@ class ApiConstants {
 
   static const String routesIndex = '/api/routes/index.php';
   static const String routesReorder = '/api/routes/reorder.php';
+  static const String routesUpdateStatus = '/api/routes/update_status.php';
 
   static const String evaluationsCreate = '/api/evaluations/create.php';
   static const String evaluationsIndex = '/api/evaluations/index.php';
@@ -52,8 +53,9 @@ class ApiConstants {
   static const String locationEscolas = '/api/location/escolas.php';
   static const String locationEscolasCreate = '/api/location/escolas_create.php';
 
-  static const String driverBairros = '/api/drivers/bairros.php';
-  static const String driverEscolas = '/api/drivers/escolas.php';
+  static const String driverBairros       = '/api/drivers/bairros.php';
+  static const String driverEscolas       = '/api/drivers/escolas.php';
+  static const String driverOpportunities = '/api/drivers/opportunities.php';
 
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 30);

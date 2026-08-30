@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
@@ -245,7 +246,7 @@ class _StudentTab extends ConsumerWidget {
           OutlinedButton.icon(
             onPressed: () => _showRegisterChildDialog(context, ref, null),
             icon: const Icon(Icons.person_add_outlined, size: 18),
-            label: const Text('Cadastrar / Editar Filho'),
+            label: const Text('Cadastrar Filho'),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primaryDark,
               side: const BorderSide(color: AppColors.primaryDark),
@@ -259,6 +260,7 @@ class _StudentTab extends ConsumerWidget {
               onToggleTalk: () => notifier.toggleTalkRequest(student.id),
               onWhatsApp: () =>
                   onWhatsApp(student.driverWhatsapp, student.driverName),
+              onReactivate: () => notifier.reactivateStudent(student.id),
               onEdit: () =>
                   _showRegisterChildDialog(context, ref, student),
             ),
@@ -293,267 +295,580 @@ class _RegisterChildDialog extends StatefulWidget {
 }
 
 class _RegisterChildDialogState extends State<_RegisterChildDialog> {
+  // Dados básicos
   late final TextEditingController _nameCtrl;
-  late final TextEditingController _schoolCtrl;
-  late final TextEditingController _schoolCepCtrl;
-  late final TextEditingController _residenceCepCtrl;
-  late final TextEditingController _residenceNumberCtrl;
-  late final TextEditingController _residenceComplementCtrl;
   late final TextEditingController _vanCodeCtrl;
+  late final TextEditingController _birthDateCtrl;
   String? _photoUrl;
   bool _uploadingPhoto = false;
+  String? _cicloEscolar;
+  String? _turno;
+
+  // Endereço residencial
+  late final TextEditingController _cepCtrl;
+  late final TextEditingController _logradouroCtrl;
+  late final TextEditingController _numeroCtrl;
+  late final TextEditingController _complementoCtrl;
+  late final TextEditingController _bairroCtrl;
+  bool _loadingCep = false;
+
+  // Escola
+  late final TextEditingController _escolaSearchCtrl;
+  int? _escolaId;
+  List<Map<String, dynamic>> _escolaSuggestions = [];
+  bool _loadingEscolas = false;
+
+  static const _ciclos = ['Infantil', 'Fundamental I', 'Fundamental II', 'Médio'];
+  static const _turnos = [('manha', 'Manhã'), ('tarde', 'Tarde')];
 
   @override
   void initState() {
     super.initState();
-    _nameCtrl = TextEditingController(text: widget.existing?.name ?? '');
-    _schoolCtrl = TextEditingController(text: widget.existing?.school ?? '');
-    _residenceCepCtrl =
-        TextEditingController(text: widget.existing?.residenceCep ?? '');
-    _residenceNumberCtrl = TextEditingController();
-    _residenceComplementCtrl = TextEditingController();
-    _vanCodeCtrl = TextEditingController();
-    _photoUrl = widget.existing?.photoUrl;
+    final e = widget.existing;
+    _nameCtrl        = TextEditingController(text: e?.name ?? '');
+    _vanCodeCtrl     = TextEditingController(text: e?.vanCode ?? '');
+    _birthDateCtrl   = TextEditingController(text: _isoToDisplay(e?.dataNascimento ?? ''));
+    _cepCtrl         = TextEditingController(text: e?.residenceCep ?? '');
+    _logradouroCtrl  = TextEditingController(text: e?.logradouro ?? '');
+    _numeroCtrl      = TextEditingController(text: e?.numero ?? '');
+    _complementoCtrl = TextEditingController(text: e?.complemento ?? '');
+    _bairroCtrl      = TextEditingController(text: e?.bairro ?? '');
+    _escolaSearchCtrl = TextEditingController(text: e?.school ?? '');
+    _cicloEscolar    = (e?.cicloEscolar == 'A definir' || e?.cicloEscolar == '') ? null : e?.cicloEscolar;
+    _turno           = (e?.turno == '') ? null : e?.turno;
+    _photoUrl        = e?.photoUrl;
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _vanCodeCtrl.dispose();
+    _birthDateCtrl.dispose();
+    _cepCtrl.dispose();
+    _logradouroCtrl.dispose();
+    _numeroCtrl.dispose();
+    _complementoCtrl.dispose();
+    _bairroCtrl.dispose();
+    _escolaSearchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _lookupCep() async {
+    final cep = _cepCtrl.text.replaceAll(RegExp(r'\D'), '');
+    if (cep.length != 8) return;
+    setState(() => _loadingCep = true);
+    try {
+      final dio = Dio();
+      final res = await dio.get('https://viacep.com.br/ws/$cep/json/');
+      if (res.data is Map && res.data['erro'] != true) {
+        setState(() {
+          _logradouroCtrl.text = res.data['logradouro'] ?? '';
+          _bairroCtrl.text    = res.data['bairro']     ?? '';
+        });
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _loadingCep = false);
+    }
+  }
+
+  Future<void> _searchEscolas(String query) async {
+    if (query.length < 2) {
+      setState(() { _escolaSuggestions = []; _escolaId = null; });
+      return;
+    }
+    setState(() => _loadingEscolas = true);
+    try {
+      final dio = Dio();
+      final res = await dio.get(
+        '${ApiConstants.baseUrl}${ApiConstants.locationEscolas}',
+        queryParameters: {'q': query},
+      );
+      if (res.data is Map && res.data['success'] == true) {
+        setState(() {
+          _escolaSuggestions = List<Map<String, dynamic>>.from(res.data['data']);
+        });
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _loadingEscolas = false);
+    }
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir aluno'),
+        content: Text('Deseja remover ${widget.existing!.name} da sua lista?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    Navigator.pop(context); // fecha o dialog de edição
+    widget.ref.read(guardianHomeProvider.notifier).deleteStudent(
+      widget.existing!.id,
+      onError: (msg) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), backgroundColor: AppColors.error),
+          );
+        }
+      },
+    );
+  }
+
+  /// Converte "dd/mm/aaaa" → "aaaa-mm-dd" para o banco. Retorna null se incompleto.
+  String? _parseDateToISO(String text) {
+    final parts = text.split('/');
+    if (parts.length != 3 || parts[2].length != 4) return null;
+    return '${parts[2]}-${parts[1]}-${parts[0]}';
+  }
+
+  /// Converte "aaaa-mm-dd" (banco) → "dd/mm/aaaa" (display). Retorna '' se vazio.
+  String _isoToDisplay(String iso) {
+    if (iso.isEmpty) return '';
+    final parts = iso.split('-');
+    if (parts.length != 3) return '';
+    return '${parts[2]}/${parts[1]}/${parts[0]}';
   }
 
   Future<void> _selectAndUploadPhoto() async {
+    if (_uploadingPhoto) return;
     final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 90,
-    );
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 90);
     if (picked == null) return;
-
     setState(() => _uploadingPhoto = true);
-
     try {
-      final uid = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
+      final uid   = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
       final token = await FirebaseAuth.instance.currentUser?.getIdToken();
       final studentId = widget.existing?.id ?? uid;
-
       final dio = Dio();
       final bytes = await picked.readAsBytes();
       final formData = FormData.fromMap({
         'referencia': 'aluno',
         'referencia_id': studentId,
         'tipo': 'perfil',
-        'arquivo': MultipartFile.fromBytes(
-          bytes,
-          filename: 'foto_aluno.jpg',
-        ),
+        'arquivo': MultipartFile.fromBytes(bytes, filename: 'foto_aluno.jpg'),
       });
-
       final response = await dio.post(
         '${ApiConstants.baseUrl}${ApiConstants.uploadFotoCnh}',
         data: formData,
-        options: Options(
-          headers: token != null
-              ? {'Authorization': 'Bearer $token'}
-              : {},
-        ),
+        options: Options(headers: token != null ? {'Authorization': 'Bearer $token'} : {}),
       );
-
       if (response.data is Map && response.data['success'] == true) {
         final url = response.data['url'] as String?;
-        if (url != null && mounted) {
-          setState(() => _photoUrl = url);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Foto enviada com sucesso!'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-        }
+        if (url != null && mounted) setState(() => _photoUrl = url);
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao enviar foto: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
+    } catch (_) {
     } finally {
       if (mounted) setState(() => _uploadingPhoto = false);
     }
   }
 
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _schoolCtrl.dispose();
-    _schoolCepCtrl.dispose();
-    _residenceCepCtrl.dispose();
-    _residenceNumberCtrl.dispose();
-    _residenceComplementCtrl.dispose();
-    _vanCodeCtrl.dispose();
-    super.dispose();
+  void _submit() {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nome do aluno é obrigatório')),
+      );
+      return;
+    }
+    if (_escolaId == null && _escolaSearchCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecione uma escola')),
+      );
+      return;
+    }
+    final van = _vanCodeCtrl.text.trim();
+    final ctx = context;
+
+    widget.ref.read(guardianHomeProvider.notifier).registerChild(
+      name: name,
+      school: _escolaSearchCtrl.text.trim(),
+      escolaId: _escolaId,
+      residenceCep: _cepCtrl.text.trim(),
+      logradouro: _logradouroCtrl.text.trim(),
+      numero: _numeroCtrl.text.trim(),
+      complemento: _complementoCtrl.text.trim(),
+      bairro: _bairroCtrl.text.trim(),
+      cicloEscolar: _cicloEscolar,
+      turno: _turno,
+      dataNascimento: _parseDateToISO(_birthDateCtrl.text),
+      vanCode: van.isEmpty ? null : van,
+      existingId: widget.existing?.id,
+      photoUrl: _photoUrl,
+      onError: (msg) {
+        if (ctx.mounted) {
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(
+              content: Text('Erro ao salvar: $msg'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      },
+    );
+    Navigator.pop(context);
+    if (van.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Solicitação enviada ao motorista!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.existing != null;
-    return AlertDialog(
-      title: Text(
-        isEdit ? 'Editar Filho' : 'Cadastrar Filho',
-        style: const TextStyle(fontWeight: FontWeight.bold),
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Column(
           children: [
-            // Photo placeholder
-            GestureDetector(
-              onTap: _uploadingPhoto ? null : _selectAndUploadPhoto,
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.surfaceVariant,
-                  border: Border.all(
-                      color: AppColors.primary, width: 2),
-                  image: _photoUrl != null
-                      ? DecorationImage(
-                          image: NetworkImage(_photoUrl!),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                ),
-                child: _uploadingPhoto
-                    ? const CircularProgressIndicator(strokeWidth: 2)
-                    : _photoUrl == null
-                        ? const Icon(Icons.camera_alt,
-                            size: 28, color: AppColors.textSecondary)
-                        : const Icon(Icons.check_circle,
-                            size: 28, color: AppColors.success),
+            // Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: const BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
               ),
-            ),
-            const SizedBox(height: 4),
-            const Text('Foto (opcional)',
-                style: TextStyle(
-                    fontSize: 11, color: AppColors.textSecondary)),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Nome do aluno *',
-                prefixIcon: Icon(Icons.person_outline),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _schoolCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Escola *',
-                prefixIcon: Icon(Icons.school_outlined),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _schoolCepCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'CEP da escola *',
-                prefixIcon: Icon(Icons.location_on_outlined),
-                hintText: '00000-000',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _residenceCepCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'CEP da residência *',
-                prefixIcon: Icon(Icons.home_outlined),
-                hintText: '00000-000',
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    controller: _residenceNumberCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Número *',
-                      prefixIcon: Icon(Icons.tag_outlined),
-                      hintText: 'Ex: 123',
-                    ),
+              child: Row(
+                children: [
+                  Text(
+                    isEdit ? 'Editar Filho' : 'Cadastrar Filho',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 3,
-                  child: TextField(
-                    controller: _residenceComplementCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Complemento',
-                      prefixIcon: Icon(Icons.apartment_outlined),
-                      hintText: 'Ex: Apto 42',
+                  const Spacer(),
+                  if (isEdit && widget.existing!.ativo)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.error),
+                      tooltip: 'Excluir aluno',
+                      onPressed: () => _confirmDelete(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
                     ),
+                  if (isEdit && !widget.existing!.ativo)
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        widget.ref.read(guardianHomeProvider.notifier)
+                            .reactivateStudent(widget.existing!.id);
+                      },
+                      icon: const Icon(Icons.restore, size: 16),
+                      label: const Text('Reativar', style: TextStyle(fontSize: 12)),
+                      style: TextButton.styleFrom(foregroundColor: AppColors.success),
+                    ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: () => Navigator.pop(context),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _vanCodeCtrl,
-              decoration: const InputDecoration(
-                labelText: 'VanCode (opcional)',
-                prefixIcon: Icon(Icons.directions_bus_outlined),
-                hintText: 'Ex: VAN12345',
-                helperText:
-                    'Preencha para solicitar vaga ao motorista',
-                helperMaxLines: 2,
+            // Body
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Foto ────────────────────────────────────────────────
+                    Center(
+                      child: GestureDetector(
+                        onTap: _uploadingPhoto ? null : _selectAndUploadPhoto,
+                        child: Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 36,
+                              backgroundColor: AppColors.surfaceVariant,
+                              backgroundImage: _photoUrl != null ? NetworkImage(_photoUrl!) : null,
+                              child: _uploadingPhoto
+                                  ? const CircularProgressIndicator(strokeWidth: 2)
+                                  : _photoUrl == null
+                                      ? const Icon(Icons.camera_alt, size: 28, color: AppColors.textSecondary)
+                                      : null,
+                            ),
+                            if (_photoUrl != null)
+                              const Positioned(
+                                bottom: 0, right: 0,
+                                child: CircleAvatar(
+                                  radius: 10,
+                                  backgroundColor: AppColors.success,
+                                  child: Icon(Icons.check, size: 12, color: Colors.white),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Center(
+                      child: Text('Foto (opcional)',
+                          style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ── Dados básicos ────────────────────────────────────────
+                    _SectionLabel('Dados do aluno'),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _nameCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Nome completo *',
+                        prefixIcon: Icon(Icons.person_outline),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Data de nascimento
+                    TextField(
+                      controller: _birthDateCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [_DateInputFormatter()],
+                      decoration: const InputDecoration(
+                        labelText: 'Data de nascimento',
+                        prefixIcon: Icon(Icons.cake_outlined),
+                        hintText: 'dd/mm/aaaa',
+                        counterText: '',
+                      ),
+                      maxLength: 10,
+                    ),
+                    const SizedBox(height: 12),
+                    // Ciclo escolar
+                    DropdownButtonFormField<String>(
+                      value: _cicloEscolar,
+                      decoration: const InputDecoration(
+                        labelText: 'Nível de ensino *',
+                        prefixIcon: Icon(Icons.school_outlined),
+                      ),
+                      items: _ciclos.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                      onChanged: (v) => setState(() => _cicloEscolar = v),
+                    ),
+                    const SizedBox(height: 12),
+                    // Turno
+                    DropdownButtonFormField<String>(
+                      value: _turno,
+                      decoration: const InputDecoration(
+                        labelText: 'Turno *',
+                        prefixIcon: Icon(Icons.wb_sunny_outlined),
+                      ),
+                      items: _turnos.map((t) => DropdownMenuItem(value: t.$1, child: Text(t.$2))).toList(),
+                      onChanged: (v) => setState(() => _turno = v),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ── Endereço residencial ──────────────────────────────────
+                    _SectionLabel('Endereço residencial'),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _cepCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: 'CEP *',
+                              prefixIcon: const Icon(Icons.location_on_outlined),
+                              hintText: '00000-000',
+                              suffixIcon: _loadingCep
+                                  ? const SizedBox(
+                                      width: 18, height: 18,
+                                      child: Padding(
+                                        padding: EdgeInsets.all(12),
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                    )
+                                  : IconButton(
+                                      icon: const Icon(Icons.search, size: 18),
+                                      onPressed: _lookupCep,
+                                      tooltip: 'Buscar CEP',
+                                    ),
+                            ),
+                            onChanged: (v) {
+                              if (v.replaceAll(RegExp(r'\D'), '').length == 8) _lookupCep();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _logradouroCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Logradouro',
+                        prefixIcon: Icon(Icons.signpost_outlined),
+                        hintText: 'Preenchido pelo CEP',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: _numeroCtrl,
+                            keyboardType: TextInputType.text,
+                            decoration: const InputDecoration(
+                              labelText: 'Número *',
+                              hintText: '123',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: _complementoCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Complemento',
+                              hintText: 'Apto 42',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _bairroCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Bairro',
+                        prefixIcon: Icon(Icons.map_outlined),
+                        hintText: 'Preenchido pelo CEP',
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ── Escola ───────────────────────────────────────────────
+                    _SectionLabel('Escola'),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _escolaSearchCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: InputDecoration(
+                        labelText: 'Buscar escola *',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _loadingEscolas
+                            ? const SizedBox(
+                                width: 18, height: 18,
+                                child: Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                            : _escolaId != null
+                                ? const Icon(Icons.check_circle, color: AppColors.success)
+                                : null,
+                        hintText: 'Digite o nome da escola...',
+                      ),
+                      onChanged: (v) {
+                        setState(() => _escolaId = null);
+                        _searchEscolas(v);
+                      },
+                    ),
+                    if (_escolaSuggestions.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(top: 4),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppColors.surfaceVariant),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          children: _escolaSuggestions.map((e) {
+                            final bairro = e['bairro']?.toString() ?? '';
+                            final sub = bairro.isNotEmpty ? bairro : '';
+                            return ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.school_outlined, size: 18),
+                              title: Text(e['nome'].toString(), style: const TextStyle(fontSize: 13)),
+                              subtitle: sub.isNotEmpty ? Text(sub, style: const TextStyle(fontSize: 11)) : null,
+                              onTap: () {
+                                setState(() {
+                                  _escolaId = (e['id'] as num).toInt();
+                                  _escolaSearchCtrl.text = e['nome'].toString();
+                                  _escolaSuggestions = [];
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    const SizedBox(height: 20),
+
+                    // ── VanCode ──────────────────────────────────────────────
+                    _SectionLabel('Motorista'),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _vanCodeCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: const InputDecoration(
+                        labelText: 'VanCode (opcional)',
+                        prefixIcon: Icon(Icons.directions_bus_outlined),
+                        hintText: 'Ex: RJ001001',
+                        helperText: 'Preencha para solicitar vaga ao motorista',
+                        helperMaxLines: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+
+                    // ── Botão salvar ─────────────────────────────────────────
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: _submit,
+                        icon: const Icon(Icons.check_circle_outline, size: 20),
+                        label: Text(
+                          isEdit ? 'Salvar alterações' : 'Cadastrar',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
               ),
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (_nameCtrl.text.trim().isEmpty ||
-                _schoolCtrl.text.trim().isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Nome e escola são obrigatórios')),
-              );
-              return;
-            }
-            widget.ref
-                .read(guardianHomeProvider.notifier)
-                .registerChild(
-                  name: _nameCtrl.text.trim(),
-                  school: _schoolCtrl.text.trim(),
-                  residenceCep: _residenceCepCtrl.text.trim(),
-                  vanCode: _vanCodeCtrl.text.trim().isEmpty
-                      ? null
-                      : _vanCodeCtrl.text.trim(),
-                  existingId: widget.existing?.id,
-                  photoUrl: _photoUrl,
-                );
-            Navigator.pop(context);
-            if (_vanCodeCtrl.text.trim().isNotEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Solicitação enviada ao motorista!'),
-                  backgroundColor: AppColors.success,
-                ),
-              );
-            }
-          },
-          child: Text(isEdit ? 'Salvar' : 'Cadastrar'),
-        ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(text,
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.bold)),
+        const SizedBox(width: 8),
+        const Expanded(child: Divider()),
       ],
     );
   }
@@ -569,6 +884,7 @@ class _StudentCard extends StatelessWidget {
   final VoidCallback onToggleTalk;
   final VoidCallback onWhatsApp;
   final VoidCallback onEdit;
+  final VoidCallback onReactivate;
 
   const _StudentCard({
     required this.student,
@@ -576,10 +892,56 @@ class _StudentCard extends StatelessWidget {
     required this.onToggleTalk,
     required this.onWhatsApp,
     required this.onEdit,
+    required this.onReactivate,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Card inativo — exibe simplificado com botão reativar
+    if (!student.ativo) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 16),
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        color: AppColors.surfaceVariant,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: AppColors.textDisabled.withAlpha(60),
+                child: Text(
+                  student.name.isNotEmpty ? student.name[0].toUpperCase() : '?',
+                  style: const TextStyle(color: AppColors.textDisabled, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(student.name,
+                        style: const TextStyle(
+                            color: AppColors.textDisabled,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.lineThrough)),
+                    const Text('Removido', style: TextStyle(fontSize: 11, color: AppColors.textDisabled)),
+                  ],
+                ),
+              ),
+              TextButton.icon(
+                onPressed: onReactivate,
+                icon: const Icon(Icons.restore, size: 16),
+                label: const Text('Reativar', style: TextStyle(fontSize: 12)),
+                style: TextButton.styleFrom(foregroundColor: AppColors.success),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 3,
@@ -607,7 +969,7 @@ class _StudentCard extends StatelessWidget {
                       : null,
                   child: student.photoUrl == null
                       ? Text(
-                          student.name[0].toUpperCase(),
+                          student.name.isNotEmpty ? student.name[0].toUpperCase() : '?',
                           style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 18,
@@ -635,19 +997,59 @@ class _StudentCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton(
+                TextButton.icon(
                   onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined,
-                      size: 18, color: AppColors.primaryDark),
-                  tooltip: 'Editar',
-                  style: IconButton.styleFrom(
-                    padding: const EdgeInsets.all(4),
+                  icon: const Icon(Icons.edit_outlined, size: 14),
+                  label: const Text('Editar', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primaryDark,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),
                 StatusChip(status: student.status),
               ],
             ),
           ),
+
+          // Banner: aguardando motorista aceitar
+          if (student.awaitingDriverAccept)
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withAlpha(25),
+                border: Border(
+                  bottom: BorderSide(
+                      color: AppColors.warning.withAlpha(80), width: 1),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.hourglass_top_rounded,
+                      size: 16, color: AppColors.warning),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Aguardando motorista aceitar a vaga',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.warning,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'Van: ${student.vanCode}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.warning.withAlpha(180),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           Padding(
             padding: const EdgeInsets.all(16),
@@ -1658,7 +2060,7 @@ class _StudentRouteReport extends StatelessWidget {
                 CircleAvatar(
                   radius: 16,
                   backgroundColor: AppColors.primaryLight,
-                  child: Text(student.name[0],
+                  child: Text(student.name.isNotEmpty ? student.name[0].toUpperCase() : '?',
                       style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
@@ -1747,4 +2149,32 @@ class _RouteEvent {
     required this.icon,
     required this.color,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Formatador de data dd/mm/aaaa com inserção automática de "/"
+// ---------------------------------------------------------------------------
+
+class _DateInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    // Só dígitos
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return newValue.copyWith(text: '');
+
+    final buf = StringBuffer();
+    for (int i = 0; i < digits.length && i < 8; i++) {
+      if (i == 2 || i == 4) buf.write('/');
+      buf.write(digits[i]);
+    }
+
+    final result = buf.toString();
+    return TextEditingValue(
+      text: result,
+      selection: TextSelection.collapsed(offset: result.length),
+    );
+  }
 }

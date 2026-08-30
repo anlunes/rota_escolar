@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/driver_repository.dart';
 import '../domain/models/student_in_route.dart';
 import '../../../../app/core/constants/status_constants.dart';
+import '../../../../app/core/services/rtdb_service.dart';
 
 // ---------------------------------------------------------------------------
 // Payment record
@@ -30,6 +31,7 @@ class PaymentRecord {
 
 class CandidateOpportunity {
   final String id;
+  final int alunoId;
   final String studentName;
   final String guardianName;
   final String guardianWhatsapp;
@@ -41,6 +43,7 @@ class CandidateOpportunity {
 
   CandidateOpportunity({
     required this.id,
+    required this.alunoId,
     required this.studentName,
     required this.guardianName,
     required this.guardianWhatsapp,
@@ -119,32 +122,16 @@ class DriverHomeNotifier extends StateNotifier<DriverHomeState> {
   Future<void> _loadInitialData() async {
     state = state.copyWith(isLoading: true);
     try {
-      final students = await _repository.fetchRouteStudents();
-      final payments = await _repository.fetchPayments();
+      final results = await Future.wait([
+        _repository.fetchRouteStudents(),
+        _repository.fetchPayments(),
+        _repository.fetchOpportunities(),
+      ]);
       state = state.copyWith(
-        students: students,
-        payments: payments,
+        students:      results[0] as List<StudentInRoute>,
+        payments:      results[1] as List<PaymentRecord>,
+        opportunities: results[2] as List<CandidateOpportunity>,
         isLoading: false,
-        opportunities: [
-          CandidateOpportunity(
-            id: 'o1',
-            studentName: 'Lucas Mendes',
-            guardianName: 'Juliana Mendes',
-            guardianWhatsapp: '11988881111',
-            address: 'Rua Nova, 55 - Bela Vista',
-            school: 'E.E. Prof. João Costa',
-            period: 'Manhã (ida e volta)',
-          ),
-          CandidateOpportunity(
-            id: 'o2',
-            studentName: 'Sofia Rocha',
-            guardianName: 'André Rocha',
-            guardianWhatsapp: '11988882222',
-            address: 'Av. Brasil, 200 - Centro',
-            school: 'E.M. Nossa Senhora',
-            period: 'Tarde (só ida)',
-          ),
-        ],
       );
     } catch (e) {
       debugPrint('[DriverHomeNotifier] _loadInitialData error: $e');
@@ -201,11 +188,21 @@ class DriverHomeNotifier extends StateNotifier<DriverHomeState> {
   }
 
   void updateStudentStatus(String studentId, StudentStatus newStatus) {
+    // Atualiza UI imediatamente
     final updated = state.students.map<StudentInRoute>((s) {
       if (s.id == studentId) return s.copyWith(status: newStatus);
       return s;
     }).toList();
     state = state.copyWith(students: updated);
+
+    // Persiste no Firebase RTDB (tempo real para o responsável)
+    RtdbService.instance.writeStatus(studentId, newStatus).catchError((e) {
+      debugPrint('[DriverHomeNotifier] RTDB writeStatus error: $e');
+      return null;
+    });
+
+    // Persiste no MySQL (histórico)
+    _repository.updateStudentStatus(studentId, newStatus).catchError((_) => false);
   }
 
   void acknowledgeTalkRequest(String studentId) {
@@ -258,8 +255,13 @@ class DriverHomeNotifier extends StateNotifier<DriverHomeState> {
     _repository.markPayment('payment_$index').catchError((_) => false);
   }
 
-  void acceptOpportunity(String id) {
+  Future<void> acceptOpportunity(String id) async {
     final opp = state.opportunities.firstWhere((o) => o.id == id);
+
+    // Persiste no banco
+    final ok = await _repository.respondOpportunity(opp.alunoId, 'accept');
+    if (!ok) return;
+
     final list = state.opportunities.map((o) {
       if (o.id == id) {
         o.accepted = true;
@@ -269,7 +271,7 @@ class DriverHomeNotifier extends StateNotifier<DriverHomeState> {
     }).toList();
 
     final newStudent = StudentInRoute(
-      id: 'new_$id',
+      id: opp.alunoId.toString(),
       name: opp.studentName,
       address: opp.address,
       school: opp.school,
@@ -287,7 +289,10 @@ class DriverHomeNotifier extends StateNotifier<DriverHomeState> {
     );
   }
 
-  void declineOpportunity(String id) {
+  Future<void> declineOpportunity(String id) async {
+    final opp = state.opportunities.firstWhere((o) => o.id == id);
+    await _repository.respondOpportunity(opp.alunoId, 'decline');
+
     final list = state.opportunities.map((o) {
       if (o.id == id) {
         o.declined = true;

@@ -63,6 +63,7 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
   String? _veiculoModelo;
   String? _vanCode;
   String? _whatsapp;
+  int _alunosAtivos = 0;
   final TextEditingController _whatsappController = TextEditingController();
 
   @override
@@ -383,8 +384,9 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
             )).toList();
             _prefEstadoId      = estadoId;
             _prefMunicipioId   = municipioId;
-            _vanCode  = data['van_code'];
-            _whatsapp = data['whatsapp'];
+            _vanCode     = data['van_code'];
+            _whatsapp    = data['whatsapp'];
+            _alunosAtivos = (data['alunos_ativos'] as num? ?? 0).toInt();
             final whatsappDb       = (data['whatsapp']           as String?) ?? '';
             final telefoneCadastro = (data['telefone_cadastro']  as String?) ?? '';
             _whatsappController.text = whatsappDb.isNotEmpty
@@ -766,7 +768,10 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
                         : 'Não informado',
                   ),
                       const Divider(height: 20),
-                      _InfoRow(label: 'Alunos ativos', value: '—'),
+                      _InfoRow(
+                        label: 'Alunos ativos',
+                        value: _alunosAtivos > 0 ? '$_alunosAtivos' : '—',
+                      ),
                       const Divider(height: 20),
                       Row(
                         children: [

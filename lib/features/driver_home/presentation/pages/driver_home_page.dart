@@ -1,6 +1,9 @@
+import 'package:dio/dio.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../app/core/constants/api_constants.dart';
 import '../../application/driver_home_provider.dart';
 import '../tabs/driver_profile_tab.dart';
 import '../tabs/driver_route_tab.dart';
@@ -19,23 +22,41 @@ class DriverHomePage extends ConsumerStatefulWidget {
 
 class _DriverHomePageState extends ConsumerState<DriverHomePage> {
   int _currentTab = 1; // Start on Rota tab
-  bool _welcomeShown = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_welcomeShown) {
-        _welcomeShown = true;
-        _showCompleteProfileNotice();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkProfileComplete());
+  }
+
+  Future<void> _checkProfileComplete() async {
+    try {
+      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+      final dio = Dio();
+      final response = await dio.get(
+        '${ApiConstants.baseUrl}${ApiConstants.driversProfile}',
+        options: Options(
+          headers: token != null ? {'Authorization': 'Bearer $token'} : {},
+        ),
+      );
+      if (response.data is Map && response.data['success'] == true) {
+        final driver = response.data['data'] ?? response.data;
+        final cnhUrl  = driver['cnh_url']  as String? ?? '';
+        final crlvUrl = driver['crlv_url'] as String? ?? '';
+        final whatsapp = driver['whatsapp'] as String? ?? '';
+        final municipio = driver['pref_municipio_id'];
+
+        final incompleto = cnhUrl.isEmpty || crlvUrl.isEmpty
+            || whatsapp.isEmpty || municipio == null;
+
+        if (incompleto && mounted) _showCompleteProfileNotice();
       }
-    });
+    } catch (_) {
+      // Silently ignore — não bloqueia o app
+    }
   }
 
   void _showCompleteProfileNotice() {
-    final user = ref.read(authNotifierProvider).user;
-    if (user == null) return;
-
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -44,8 +65,8 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
         content: const Text(
           'Seu cadastro ainda está incompleto.\n\n'
           'Para aparecer na busca dos responsáveis, preencha pelo menos:\n'
-          '• Dados pessoais e WhatsApp\n'
-          '• Informações do veículo\n'
+          '• Localização e bairros que atende\n'
+          '• WhatsApp\n'
           '• CNH e CRLV\n\n'
           'Leva poucos minutos e você já fica visível na plataforma!',
         ),

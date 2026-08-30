@@ -30,38 +30,39 @@ try {
     $motorista = $mStmt->fetch();
     if (!$motorista) Response::error('Motorista não encontrado.', 404);
 
-    $sql = "
+    // Busca alunos vinculados ao motorista, com status do dia se existir
+    $stmt = $pdo->prepare("
         SELECT
-            rda.id, rda.aluno_id AS aluno_id,
+            a.aluno_id AS id,
             a.nome AS name,
-            a.endereco AS address,
-            e.nome AS school,
-            rda.status_atual,
-            rda.vai_hoje,
-            rda.talk_requested,
-            r.nome AS guardian_name,
-            r.telefone AS guardian_whatsapp,
+            COALESCE(
+                NULLIF(a.endereco, ''),
+                NULLIF(TRIM(CONCAT_WS(', ',
+                    NULLIF(COALESCE(a.logradouro, ''), ''),
+                    NULLIF(CONCAT('nº ', COALESCE(a.numero_residencia, '')), 'nº '),
+                    NULLIF(COALESCE(a.bairro_residencia, ''), '')
+                )), ''),
+                NULLIF(a.bairro_residencia, ''),
+                ''
+            ) AS address,
+            COALESCE(e.nome, 'Sem escola') AS school,
+            COALESCE(rda.status_atual, 'waiting_van') AS status_atual,
+            CAST(COALESCE(rda.vai_hoje, 1) AS SIGNED) AS vai_hoje,
+            CAST(COALESCE(rda.talk_requested, 0) AS SIGNED) AS talk_requested,
+            COALESCE(r.nome, '') AS guardian_name,
+            COALESCE(r.whatsapp, r.telefone, '') AS guardian_whatsapp,
             0 AS payment_paid,
-            rda.ordem
-        FROM rota_dias rd
-        JOIN rota_dia_alunos rda ON rda.rota_dia_id = rd.id
-        JOIN alunos a ON a.aluno_id = rda.aluno_id
+            COALESCE(rda.ordem, 999) AS ordem,
+            COALESCE(a.turno, '') AS turno
+        FROM alunos a
         LEFT JOIN escolas e ON e.escola_id = a.escola_id
         LEFT JOIN responsaveis r ON r.responsavel_id = a.responsavel_id
-        WHERE rd.motorista_id = ?
-        AND rd.data_servico = ?
-    ";
-    $params = [$motorista['motorista_id'], $date];
-
-    if ($period) {
-        $sql .= " AND rd.ciclo_escolar = ?";
-        $params[] = $period;
-    }
-
-    $sql .= " ORDER BY rda.ordem ASC, a.nome ASC";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
+        LEFT JOIN rota_dias rd ON rd.motorista_id = ? AND rd.data_servico = ?
+        LEFT JOIN rota_dia_alunos rda ON rda.aluno_id = a.aluno_id AND rda.rota_dia_id = rd.id
+        WHERE a.motorista_id = ? AND a.ativo = 1
+        ORDER BY rda.ordem ASC, a.nome ASC
+    ");
+    $stmt->execute([$motorista['motorista_id'], $date, $motorista['motorista_id']]);
     $rows = $stmt->fetchAll();
 
     // Cast int fields
