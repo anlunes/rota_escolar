@@ -34,7 +34,7 @@ class GuardianHomeState {
 class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
   final Ref _ref;
   final StudentsRepository _studentsRepository;
-  final Map<String, StreamSubscription<StudentStatus?>> _statusSubs = {};
+  final Map<String, StreamSubscription<({StudentStatus status, String lastUpdate})?>> _statusSubs = {};
 
   GuardianHomeNotifier(this._ref, this._studentsRepository)
       : super(const GuardianHomeState(students: [])) {
@@ -76,13 +76,15 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
 
       _statusSubs[student.id] = RtdbService.instance
           .watchStatus(student.id)
-          .listen((newStatus) {
-        if (newStatus == null || !mounted) return;
-        final now = _formattedNow();
+          .listen((payload) {
+        if (payload == null || !mounted) return;
         state = state.copyWith(
           students: state.students.map((s) {
             if (s.id == student.id) {
-              return s.copyWith(status: newStatus, lastUpdateTime: now);
+              return s.copyWith(
+                status: payload.status,
+                lastUpdateTime: payload.lastUpdate,
+              );
             }
             return s;
           }).toList(),
@@ -91,13 +93,6 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
         debugPrint('[GuardianHomeNotifier] RTDB watchStatus error (${student.id}): $e');
       });
     }
-  }
-
-  String _formattedNow() {
-    final now = DateTime.now();
-    final h = now.hour.toString().padLeft(2, '0');
-    final m = now.minute.toString().padLeft(2, '0');
-    return '$h:$m';
   }
 
   void toggleGoToday(String studentId) {

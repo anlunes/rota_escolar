@@ -235,7 +235,7 @@ class _StudentTab extends ConsumerWidget {
               ),
               const Spacer(),
               Text(
-                '${state.students.length} aluno(s)',
+                '${DateFormat('dd/MM - EEE', 'pt_BR').format(DateTime.now())}  •  ${state.students.length} aluno(s)',
                 style: const TextStyle(
                     fontSize: 12, color: AppColors.textSecondary),
               ),
@@ -960,6 +960,7 @@ class _StudentCard extends StatelessWidget {
               ),
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 CircleAvatar(
                   radius: 24,
@@ -991,23 +992,36 @@ class _StudentCard extends StatelessWidget {
                         student.school,
                         style: const TextStyle(
                             fontSize: 12, color: AppColors.textSecondary),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
+                      ),
+                      Row(
+                        children: [
+                          if (student.cicloEscolar.isNotEmpty &&
+                              student.cicloEscolar != 'A definir')
+                            Text(
+                              student.cicloEscolar,
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.textSecondary),
+                            ),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: onEdit,
+                            icon: const Icon(Icons.edit_outlined, size: 14),
+                            label: const Text('Editar',
+                                style: TextStyle(fontSize: 12)),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.primaryDark,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined, size: 14),
-                  label: const Text('Editar', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primaryDark,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
-                StatusChip(status: student.status),
               ],
             ),
           ),
@@ -1058,10 +1072,12 @@ class _StudentCard extends StatelessWidget {
                 // Status timeline with times
                 _StatusTimeline(
                     status: student.status, stepTimes: student.stepTimes),
-                const SizedBox(height: 14),
-                if (student.lastUpdateTime != null)
-                  Row(
-                    children: [
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    StatusChip(status: student.status),
+                    const Spacer(),
+                    if (student.lastUpdateTime != null) ...[
                       const Icon(Icons.access_time,
                           size: 13, color: AppColors.textSecondary),
                       const SizedBox(width: 4),
@@ -1071,7 +1087,8 @@ class _StudentCard extends StatelessWidget {
                             fontSize: 11, color: AppColors.textSecondary),
                       ),
                     ],
-                  ),
+                  ],
+                ),
                 const SizedBox(height: 14),
 
                 // Vai hoje + Quero falar
@@ -1099,115 +1116,14 @@ class _StudentCard extends StatelessWidget {
                         active: student.talkRequested,
                         activeColor: AppColors.warning,
                         inactiveColor: AppColors.textSecondary,
-                        onTap: onToggleTalk,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-
-                // Payment status + WhatsApp
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: student.ativo
-                              ? AppColors.success.withAlpha(20)
-                              : AppColors.warning.withAlpha(20),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: student.ativo
-                                ? AppColors.success.withAlpha(80)
-                                : AppColors.warning.withAlpha(80),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              student.ativo
-                                  ? Icons.check_circle_outline
-                                  : Icons.pending_outlined,
-                              size: 16,
-                              color: student.ativo
-                                  ? AppColors.success
-                                  : AppColors.warning,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    student.cicloEscolar,
-                                    style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textSecondary),
-                                  ),
-                                  Text(
-                                    student.ativo
-                                        ? 'Ativo ✓'
-                                        : 'Inativo',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: student.ativo
-                                          ? AppColors.success
-                                          : AppColors.warning,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        onTap: () => _showTalkSheet(
+                          context,
+                          student.driverName,
+                          student.driverWhatsapp,
+                          onToggleTalk,
+                          onWhatsApp,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    ElevatedButton.icon(
-                      onPressed: onWhatsApp,
-                      icon: SvgPicture.asset(
-                        'assets/icons/whatsapp.svg',
-                        width: 16,
-                        height: 16,
-                        colorFilter: const ColorFilter.mode(
-                            Colors.white, BlendMode.srcIn),
-                      ),
-                      label: const Text('Motorista',
-                          style: TextStyle(fontSize: 12)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF25D366),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Driver info
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.drive_eta,
-                        size: 14, color: AppColors.textSecondary),
-                    const SizedBox(width: 4),
-                    Text(
-                      student.driverName,
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary),
-                    ),
-                    const SizedBox(width: 6),
-                    const Text('•',
-                        style: TextStyle(
-                            fontSize: 12, color: AppColors.textDisabled)),
-                    const SizedBox(width: 6),
-                    Text(
-                      student.cicloEscolar,
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary),
                     ),
                   ],
                 ),
@@ -1215,6 +1131,109 @@ class _StudentCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showTalkSheet(
+    BuildContext context,
+    String driverName,
+    String driverWhatsapp,
+    VoidCallback onLeaveRequest,
+    VoidCallback onWhatsApp,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textDisabled,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              driverName.isNotEmpty
+                  ? 'Falar com o Motorista $driverName'
+                  : 'Falar com o Motorista',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withAlpha(25),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.warning.withAlpha(80)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.info_outline, size: 16, color: AppColors.warning),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'O motorista não pode responder enquanto estiver dirigindo. '
+                      'Assim que puder, ele entrará em contato pelo WhatsApp.',
+                      style: TextStyle(fontSize: 12, color: AppColors.warning),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onLeaveRequest();
+                },
+                icon: const Icon(Icons.notifications_outlined),
+                label: const Text('Deixar chamado'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryDark,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onWhatsApp();
+                },
+                icon: SvgPicture.asset(
+                  'assets/icons/whatsapp.svg',
+                  width: 18, height: 18,
+                  colorFilter: const ColorFilter.mode(
+                      Color(0xFF25D366), BlendMode.srcIn),
+                ),
+                label: const Text('WhatsApp — apenas se urgente'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF25D366),
+                  side: const BorderSide(color: Color(0xFF25D366)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1235,87 +1254,88 @@ class _StatusTimeline extends StatelessWidget {
     final steps = StudentStatus.values;
     final currentIndex = steps.indexOf(status);
 
-    return Row(
-      children: steps.asMap().entries.map((entry) {
-        final i = entry.key;
-        final s = entry.value;
-        final isDone = i < currentIndex;
-        final isCurrent = i == currentIndex;
-        // Show time only on completed or current steps (colored dot)
-        final showTime = (isDone || isCurrent) &&
-            stepTimes != null &&
-            i < stepTimes!.length &&
-            stepTimes![i].isNotEmpty;
-        final timeLabel = showTime ? stepTimes![i] : '';
+    final List<Widget> items = [];
+    for (int i = 0; i < steps.length; i++) {
+      final s = steps[i];
+      final isDone = i < currentIndex;
+      final isCurrent = i == currentIndex;
+      final showTime = (isDone || isCurrent) &&
+          stepTimes != null &&
+          i < stepTimes!.length &&
+          stepTimes![i].isNotEmpty;
+      final timeLabel = showTime ? stepTimes![i] : '';
 
-        return Expanded(
-          child: Row(
-            children: [
-              Column(
-                children: [
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isDone || isCurrent
-                          ? AppColors.primary
-                          : AppColors.surfaceVariant,
-                      border: Border.all(
-                        color: isDone || isCurrent
-                            ? AppColors.primary
-                            : AppColors.textDisabled,
-                        width: 2,
-                      ),
-                    ),
-                    child: Icon(
-                      _iconFor(s),
-                      size: 12,
-                      color: isDone || isCurrent
-                          ? AppColors.text
-                          : AppColors.textDisabled,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _shortLabel(s),
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight:
-                          isCurrent ? FontWeight.bold : FontWeight.normal,
-                      color: isCurrent
-                          ? AppColors.text
-                          : AppColors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                  ),
-                  if (timeLabel.isNotEmpty)
-                    Text(
-                      timeLabel,
-                      style: const TextStyle(
-                          fontSize: 8, color: AppColors.textSecondary),
-                      textAlign: TextAlign.center,
-                    )
-                  else
-                    // Reserve height so layout stays stable
-                    const SizedBox(height: 10),
-                ],
-              ),
-              if (i < steps.length - 1)
-                Expanded(
-                  child: Container(
-                    height: 2,
-                    color: i < currentIndex
-                        ? AppColors.primary
-                        : AppColors.textDisabled,
-                    margin: const EdgeInsets.only(bottom: 30),
-                  ),
+      // Círculo + label
+      items.add(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isDone || isCurrent
+                    ? AppColors.primary
+                    : AppColors.surfaceVariant,
+                border: Border.all(
+                  color: isDone || isCurrent
+                      ? AppColors.primary
+                      : AppColors.textDisabled,
+                  width: 2,
                 ),
-            ],
+              ),
+              child: Icon(
+                _iconFor(s),
+                size: 18,
+                color: isDone || isCurrent
+                    ? AppColors.text
+                    : AppColors.textDisabled,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _shortLabel(s),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                color: isCurrent ? AppColors.text : AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+            ),
+            if (timeLabel.isNotEmpty)
+              Text(
+                timeLabel,
+                style: const TextStyle(
+                    fontSize: 10, color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              )
+            else
+              const SizedBox(height: 12),
+          ],
+        ),
+      );
+
+      // Conector entre círculos
+      if (i < steps.length - 1) {
+        items.add(
+          Expanded(
+            child: Container(
+              height: 2,
+              color: i < currentIndex
+                  ? AppColors.primary
+                  : AppColors.textDisabled,
+              margin: const EdgeInsets.only(bottom: 38),
+            ),
           ),
         );
-      }).toList(),
+      }
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: items,
     );
   }
 
