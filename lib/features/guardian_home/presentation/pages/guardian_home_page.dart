@@ -1082,7 +1082,7 @@ class _StudentCard extends StatelessWidget {
                           size: 13, color: AppColors.textSecondary),
                       const SizedBox(width: 4),
                       Text(
-                        'Última atualização: ${student.lastUpdateTime}',
+                        student.lastUpdateTime!,
                         style: const TextStyle(
                             fontSize: 11, color: AppColors.textSecondary),
                       ),

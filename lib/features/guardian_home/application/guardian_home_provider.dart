@@ -77,13 +77,14 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
       _statusSubs[student.id] = RtdbService.instance
           .watchStatus(student.id)
           .listen((payload) {
-        if (payload == null || !mounted) return;
+        if (!mounted) return;
         state = state.copyWith(
           students: state.students.map((s) {
             if (s.id == student.id) {
+              // null = nó deletado (reset) ou sem atividade hoje → volta ao início
               return s.copyWith(
-                status: payload.status,
-                lastUpdateTime: payload.lastUpdate,
+                status: payload?.status ?? StudentStatus.waitingVan,
+                lastUpdateTime: payload?.lastUpdate,
               );
             }
             return s;

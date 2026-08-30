@@ -1,5 +1,8 @@
 import '../../../../app/core/constants/status_constants.dart';
 
+// Sentinel para distinguir "não passou" de "passou null explicitamente"
+const _keep = Object();
+
 class StudentSummary {
   final String id;
   final String name;
@@ -73,7 +76,7 @@ class StudentSummary {
     String? bairro,
     String? turno,
     String? dataNascimento,
-    String? lastUpdateTime,
+    Object? lastUpdateTime = _keep,
     List<String>? stepTimes,
   }) {
     return StudentSummary(
@@ -98,7 +101,9 @@ class StudentSummary {
       bairro: bairro ?? this.bairro,
       turno: turno ?? this.turno,
       dataNascimento: dataNascimento ?? this.dataNascimento,
-      lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
+      lastUpdateTime: lastUpdateTime == _keep
+          ? this.lastUpdateTime
+          : lastUpdateTime as String?,
       stepTimes: stepTimes ?? this.stepTimes,
     );
   }

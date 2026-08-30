@@ -44,6 +44,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $pdo = Database::getInstance();
 
+// Motoristas para o seletor de reset
+$motoristas = $pdo->query("
+    SELECT m.motorista_id, u.nome
+    FROM motoristas m
+    JOIN usuarios u ON u.uid = m.uid
+    ORDER BY u.nome
+")->fetchAll();
+
+// Últimos resets (log)
+$ultimosResets = $pdo->query("
+    SELECT r.reset_at, r.data_servico, r.tipo, r.alunos_afetados,
+           COALESCE(u.nome, 'Todos') AS motorista_nome
+    FROM rota_resets r
+    LEFT JOIN motoristas m ON m.motorista_id = r.motorista_id
+    LEFT JOIN usuarios u ON u.uid = m.uid
+    ORDER BY r.reset_at DESC
+    LIMIT 10
+")->fetchAll();
+
 // Bairros pendentes
 $bairrosPendentes = $pdo->query("
     SELECT id, nome,
@@ -136,6 +155,48 @@ try {
     padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: .85rem; font-weight: 600;
   }
   .btn-rejeitar:hover { background: #fdecea; }
+
+  /* Reset de rota */
+  .reset-card {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.08);
+    padding: 24px;
+  }
+  .reset-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+    margin-bottom: 20px;
+  }
+  .reset-form label { font-size: .82rem; color: #666; display: block; margin-bottom: 4px; }
+  .reset-form input[type=date],
+  .reset-form select {
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: .9rem;
+    background: #fafafa;
+  }
+  .btn-reset {
+    padding: 9px 18px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: .88rem;
+    font-weight: 600;
+  }
+  .btn-reset-primary { background: #2c7be5; color: #fff; }
+  .btn-reset-primary:hover { background: #1a68d1; }
+  .btn-reset-danger  { background: #e74c3c; color: #fff; }
+  .btn-reset-danger:hover  { background: #c0392b; }
+  .reset-log { margin-top: 16px; }
+  .reset-log table { margin-top: 8px; }
+  .reset-log th, .reset-log td { font-size: .82rem; }
+  #reset-msg { margin-top: 12px; padding: 10px 14px; border-radius: 6px; display: none; font-size: .9rem; }
+  #reset-msg.ok  { background: #eafaf1; color: #1e8449; border: 1px solid #a9dfbf; }
+  #reset-msg.err { background: #fdecea; color: #c0392b; border: 1px solid #f5c6c6; }
 </style>
 </head>
 <body>
@@ -245,6 +306,117 @@ try {
     <?php endif; ?>
   </div>
 
+  <!-- Zerar Rota do Dia -->
+  <div class="section">
+    <div class="section-title">Zerar Rota do Dia</div>
+    <div class="reset-card">
+      <div class="reset-form">
+        <div>
+          <label>Data</label>
+          <input type="date" id="reset-data" value="<?= date('Y-m-d') ?>">
+        </div>
+        <div>
+          <label>Motorista</label>
+          <select id="reset-motorista">
+            <option value="0">— Selecione —</option>
+            <?php foreach ($motoristas as $m): ?>
+              <option value="<?= $m['motorista_id'] ?>"><?= htmlspecialchars($m['nome']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div>
+          <label>O que zerar</label>
+          <select id="reset-tipo">
+            <option value="ambos">Motorista + Responsáveis</option>
+            <option value="mysql">Só tela do motorista</option>
+            <option value="rtdb">Só tela dos responsáveis</option>
+          </select>
+        </div>
+        <button class="btn-reset btn-reset-primary" onclick="fazerReset(false)">↺ Zerar motorista selecionado</button>
+        <button class="btn-reset btn-reset-danger"  onclick="fazerReset(true)"
+                title="Zera todos os motoristas na data selecionada">⚠ Zerar TODOS</button>
+      </div>
+
+      <div id="reset-msg"></div>
+
+      <!-- Log dos últimos resets -->
+      <?php if (!empty($ultimosResets)): ?>
+      <div class="reset-log">
+        <strong style="font-size:.85rem;color:#666">Últimos resets</strong>
+        <table>
+          <thead>
+            <tr><th>Data/hora</th><th>Data serviço</th><th>Motorista</th><th>Tipo</th><th>Alunos</th></tr>
+          </thead>
+          <tbody>
+            <?php foreach ($ultimosResets as $r): ?>
+            <tr>
+              <td><?= date('d/m H:i', strtotime($r['reset_at'])) ?></td>
+              <td><?= date('d/m/Y', strtotime($r['data_servico'])) ?></td>
+              <td><?= htmlspecialchars($r['motorista_nome']) ?></td>
+              <td><?= $r['tipo'] ?></td>
+              <td><?= $r['alunos_afetados'] ?></td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <?php endif; ?>
+    </div>
+  </div>
+
 </main>
+
+<script>
+async function fazerReset(todos) {
+  const data       = document.getElementById('reset-data').value;
+  const motoristaId = todos ? 0 : parseInt(document.getElementById('reset-motorista').value);
+  const tipo       = document.getElementById('reset-tipo').value;
+  const msg        = document.getElementById('reset-msg');
+
+  if (!todos && motoristaId === 0) {
+    showMsg('Selecione um motorista ou use "Zerar TODOS".', false);
+    return;
+  }
+
+  const confirma = todos
+    ? confirm('⚠ Isso vai zerar TODOS os motoristas na data ' + data + '.\n\nTem certeza?')
+    : confirm('Zerar rota de ' + document.getElementById('reset-motorista').selectedOptions[0].text + ' em ' + data + '?');
+
+  if (!confirma) return;
+
+  msg.style.display = 'none';
+
+  try {
+    const res = await fetch('../api/admin/reset_route.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data, motorista_id: motoristaId, tipo }),
+    });
+    const json = await res.json();
+    if (json.success) {
+      const debugInfo = json.rtdb_debug ? json.rtdb_debug.map(d =>
+        `aluno ${d.aluno_id}: HTTP ${d.http} | resp: ${d.response}`
+      ).join('\n') : '';
+      const authInfo   = json.rtdb_auth_method ? ` [auth: ${json.rtdb_auth_method}]` : '';
+      const secretInfo = `\nsecret_found: ${json.rtdb_secret_found}\npath: ${json.rtdb_secret_path}`;
+      const errInfo    = json.rtdb_errors?.length ? '\nErros RTDB:\n' + json.rtdb_errors.join('\n') : '';
+      showMsg('✓ ' + json.message + authInfo + secretInfo + (debugInfo ? '\n\nDebug RTDB:\n' + debugInfo : '') + errInfo, true);
+      setTimeout(() => location.reload(), 2000);
+    } else {
+      showMsg('Erro: ' + json.message, false);
+    }
+  } catch (e) {
+    showMsg('Erro de conexão: ' + e, false);
+  }
+}
+
+function showMsg(text, ok) {
+  const el = document.getElementById('reset-msg');
+  el.innerText = text;
+  el.style.whiteSpace = 'pre-wrap';
+  el.className = ok ? 'ok' : 'err';
+  el.style.display = 'block';
+}
+</script>
 </body>
 </html>
