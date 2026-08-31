@@ -56,6 +56,7 @@ class ApiConstants {
   static const String driverBairros       = '/api/drivers/bairros.php';
   static const String driverEscolas       = '/api/drivers/escolas.php';
   static const String driverOpportunities = '/api/drivers/opportunities.php';
+  static const String driversAvailable    = '/api/drivers/available.php';
 
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 30);

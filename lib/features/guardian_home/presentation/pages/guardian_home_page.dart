@@ -18,52 +18,66 @@ import '../../../../app/theme/app_colors.dart';
 import '../../../../app/core/constants/api_constants.dart';
 
 // ---------------------------------------------------------------------------
-// Mock available drivers for the Drivers tab
+// Available driver model
 // ---------------------------------------------------------------------------
 class _DriverInfo {
-  final String id;
+  final int id;
   final String name;
   final String vanCode;
   final double rating;
+  final int ratingTotal;
   final List<String> neighborhoods;
   final String whatsapp;
+  final String? photoUrl;
+  final bool docCnh;
+  final bool docCrlv;
+  final bool docSeguro;
+  final bool docAutorizacao;
+  final int alunosAtivos;
+  final List<String> schools;
 
   const _DriverInfo({
     required this.id,
     required this.name,
     required this.vanCode,
     required this.rating,
+    required this.ratingTotal,
     required this.neighborhoods,
     required this.whatsapp,
+    this.photoUrl,
+    required this.docCnh,
+    required this.docCrlv,
+    required this.docSeguro,
+    required this.docAutorizacao,
+    required this.alunosAtivos,
+    this.schools = const [],
   });
-}
 
-const _mockDrivers = [
-  _DriverInfo(
-    id: 'd1',
-    name: 'João Motorista',
-    vanCode: 'VAN12345',
-    rating: 4.8,
-    neighborhoods: ['Jardim Primavera', 'Centro', 'Vila Verde'],
-    whatsapp: '11988888888',
-  ),
-  _DriverInfo(
-    id: 'd2',
-    name: 'Maria Condutora',
-    vanCode: 'VAN67890',
-    rating: 4.6,
-    neighborhoods: ['Parque Sol', 'Boa Vista', 'Centro'],
-    whatsapp: '11977777777',
-  ),
-  _DriverInfo(
-    id: 'd3',
-    name: 'Carlos Transporte',
-    vanCode: 'VAN11223',
-    rating: 4.9,
-    neighborhoods: ['Jardim Primavera', 'Bela Vista', 'Alto da Serra'],
-    whatsapp: '11966666666',
-  ),
-];
+  factory _DriverInfo.fromJson(Map<String, dynamic> j) {
+    final bairros = (j['bairros'] as List?)
+        ?.map((b) => b['nome'].toString())
+        .toList() ?? [];
+    final docs = j['docs_ok'] as Map? ?? {};
+    return _DriverInfo(
+      id:              (j['id'] as num).toInt(),
+      name:            j['nome']?.toString() ?? '',
+      vanCode:         j['van_code']?.toString() ?? '',
+      rating:          (j['rating_media'] as num?)?.toDouble() ?? 0,
+      ratingTotal:     (j['rating_total'] as num?)?.toInt() ?? 0,
+      neighborhoods:   bairros,
+      whatsapp:        j['whatsapp']?.toString() ?? '',
+      photoUrl:        j['foto_url']?.toString(),
+      docCnh:          docs['cnh'] == true,
+      docCrlv:         docs['crlv'] == true,
+      docSeguro:       docs['seguro'] == true,
+      docAutorizacao:  docs['autorizacao'] == true,
+      alunosAtivos:    (j['alunos_ativos'] as num?)?.toInt() ?? 0,
+      schools: (j['escolas'] as List?)
+          ?.map((e) => e['nome'].toString())
+          .toList() ?? [],
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Guardian Home Page — 6-tab layout
@@ -148,7 +162,7 @@ class _GuardianHomePageState extends ConsumerState<GuardianHomePage> {
           _StudentTab(onWhatsApp: _openWhatsApp),
           const _VideosTab(),
           const _MapTab(),
-          _DriversTab(onWhatsApp: _openWhatsApp),
+          const _DriversTab(),
           const _CommunicationTab(),
           const _RouteReportTab(),
         ],
@@ -1487,31 +1501,46 @@ class _MapTab extends StatelessWidget {
 // Tab 4 — Available Drivers
 // ---------------------------------------------------------------------------
 
-class _DriversTab extends StatelessWidget {
-  final Future<void> Function(String phone, String name) onWhatsApp;
-
-  const _DriversTab({required this.onWhatsApp});
+class _DriversTab extends StatefulWidget {
+  const _DriversTab();
 
   @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text(
-          'Motoristas disponíveis na região',
-          style: Theme.of(context)
-              .textTheme
-              .titleSmall
-              ?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        ..._mockDrivers.map((driver) => _DriverCard(
-              driver: driver,
-              onWhatsApp: () => onWhatsApp(driver.whatsapp, driver.name),
-              onProfile: () => _showDriverProfile(context, driver),
-            )),
-      ],
-    );
+  State<_DriversTab> createState() => _DriversTabState();
+}
+
+class _DriversTabState extends State<_DriversTab> {
+  List<_DriverInfo> _drivers = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final dio = Dio();
+      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+      final res = await dio.get(
+        '${ApiConstants.baseUrl}${ApiConstants.driversAvailable}',
+        options: Options(headers: token != null
+            ? {'Authorization': 'Bearer $token'}
+            : {}),
+      );
+      if (res.data is Map && res.data['success'] == true) {
+        final list = (res.data['data'] as List)
+            .map((j) => _DriverInfo.fromJson(j as Map<String, dynamic>))
+            .toList();
+        if (mounted) setState(() { _drivers = list; _loading = false; });
+      } else {
+        if (mounted) setState(() { _error = 'Erro ao carregar motoristas.'; _loading = false; });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
   }
 
   void _showDriverProfile(BuildContext context, _DriverInfo driver) {
@@ -1524,21 +1553,73 @@ class _DriversTab extends StatelessWidget {
       builder: (_) => _DriverProfileSheet(driver: driver),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: AppColors.error),
+            const SizedBox(height: 12),
+            Text(_error!, textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.textSecondary)),
+            const SizedBox(height: 16),
+            ElevatedButton(onPressed: _load, child: const Text('Tentar novamente')),
+          ],
+        ),
+      );
+    }
+    if (_drivers.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.directions_bus_outlined, size: 56, color: AppColors.textDisabled),
+            SizedBox(height: 12),
+            Text('Nenhum motorista disponível na região',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 15)),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            'Motoristas disponíveis na região',
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          ..._drivers.map((driver) => _DriverCard(
+                driver: driver,
+                onProfile: () => _showDriverProfile(context, driver),
+              )),
+        ],
+      ),
+    );
+  }
 }
 
 class _DriverCard extends StatelessWidget {
   final _DriverInfo driver;
-  final VoidCallback onWhatsApp;
   final VoidCallback onProfile;
 
-  const _DriverCard({
-    required this.driver,
-    required this.onWhatsApp,
-    required this.onProfile,
-  });
+  const _DriverCard({required this.driver, required this.onProfile});
 
   @override
   Widget build(BuildContext context) {
+    final docsOk = driver.docCnh && driver.docCrlv;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
@@ -1551,25 +1632,26 @@ class _DriverCard extends StatelessWidget {
               CircleAvatar(
                 radius: 28,
                 backgroundColor: AppColors.primaryLight,
-                backgroundImage: null,
-                child: Text(
-                  driver.name[0],
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                      color: AppColors.primaryDark),
-                ),
+                backgroundImage: driver.photoUrl != null
+                    ? NetworkImage(driver.photoUrl!)
+                    : null,
+                child: driver.photoUrl == null
+                    ? Text(driver.name.isNotEmpty ? driver.name[0] : '?',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 20,
+                            color: AppColors.primaryDark))
+                    : null,
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      driver.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15),
-                    ),
+                    Text(driver.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15)),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         Container(
@@ -1579,26 +1661,41 @@ class _DriverCard extends StatelessWidget {
                             color: AppColors.primary.withAlpha(40),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Text(
-                            driver.vanCode,
-                            style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold),
-                          ),
+                          child: Text(driver.vanCode,
+                              style: const TextStyle(
+                                  fontSize: 11, fontWeight: FontWeight.bold)),
                         ),
                         const SizedBox(width: 8),
-                        const Icon(Icons.star,
-                            size: 14, color: AppColors.primary),
+                        const Icon(Icons.star, size: 14, color: AppColors.primary),
                         Text(
-                          driver.rating.toStringAsFixed(1),
+                          driver.rating > 0
+                              ? driver.rating.toStringAsFixed(1)
+                              : 'Novo',
                           style: const TextStyle(
                               fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          docsOk ? Icons.verified : Icons.info_outline,
+                          size: 14,
+                          color: docsOk ? AppColors.success : AppColors.warning,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          docsOk ? 'Docs ok' : 'Docs pendentes',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: docsOk
+                                  ? AppColors.success
+                                  : AppColors.warning),
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      driver.neighborhoods.join(' · '),
+                      driver.neighborhoods.isEmpty
+                          ? 'Bairros não informados'
+                          : driver.neighborhoods.join(' · '),
                       style: const TextStyle(
                           fontSize: 11, color: AppColors.textSecondary),
                       maxLines: 1,
@@ -1607,23 +1704,7 @@ class _DriverCard extends StatelessWidget {
                   ],
                 ),
               ),
-              // WhatsApp button with SVG icon
-              IconButton(
-                onPressed: onWhatsApp,
-                icon: SvgPicture.asset(
-                  'assets/icons/whatsapp.svg',
-                  width: 24,
-                  height: 24,
-                  colorFilter: const ColorFilter.mode(
-                      Color(0xFF25D366), BlendMode.srcIn),
-                ),
-                tooltip: 'WhatsApp',
-                style: IconButton.styleFrom(
-                  backgroundColor:
-                      const Color(0xFF25D366).withAlpha(20),
-                  padding: const EdgeInsets.all(8),
-                ),
-              ),
+              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
             ],
           ),
         ),
@@ -1637,12 +1718,64 @@ class _DriverProfileSheet extends StatelessWidget {
 
   const _DriverProfileSheet({required this.driver});
 
+  Future<void> _openWhatsApp(BuildContext context) async {
+    if (driver.whatsapp.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('WhatsApp não informado pelo motorista.')),
+      );
+      return;
+    }
+    // Remove tudo que não for dígito
+    final number = driver.whatsapp.replaceAll(RegExp(r'\D'), '');
+    final full   = number.startsWith('55') ? number : '55$number';
+    final msg    = Uri.encodeComponent(
+        'Olá ${driver.name}, vi seu perfil no Rota Escolar e gostaria de saber mais sobre o transporte.');
+    final uri = Uri.parse('https://wa.me/$full?text=$msg');
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('WhatsApp não encontrado. Número: $number'),
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(label: 'OK', onPressed: () {}),
+          ),
+        );
+      }
+    }
+  }
+
+  void _openPhoto(BuildContext context) {
+    if (driver.photoUrl == null) return;
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(16),
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: Image.network(
+            driver.photoUrl!,
+            fit: BoxFit.cover,
+            loadingBuilder: (_, child, progress) => progress == null
+                ? child
+                : const Center(child: CircularProgressIndicator(color: Colors.white)),
+            errorBuilder: (_, __, ___) => const Icon(
+                Icons.broken_image, color: Colors.white, size: 48),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final stars = driver.rating.floor();
     return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      maxChildSize: 0.9,
-      minChildSize: 0.4,
+      initialChildSize: 0.75,
+      maxChildSize: 0.95,
+      minChildSize: 0.5,
       expand: false,
       builder: (_, controller) => SingleChildScrollView(
         controller: controller,
@@ -1650,27 +1783,35 @@ class _DriverProfileSheet extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Handle
             Center(
               child: Container(
-                width: 40,
-                height: 4,
+                width: 40, height: 4,
                 decoration: BoxDecoration(
                     color: AppColors.textDisabled,
                     borderRadius: BorderRadius.circular(4)),
               ),
             ),
             const SizedBox(height: 20),
+
+            // Header: foto + nome + rating
             Row(
               children: [
-                CircleAvatar(
-                  radius: 36,
-                  backgroundColor: AppColors.primaryLight,
-                  child: Text(
-                    driver.name[0],
-                    style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primaryDark),
+                GestureDetector(
+                  onTap: driver.photoUrl != null ? () => _openPhoto(context) : null,
+                  child: CircleAvatar(
+                    radius: 36,
+                    backgroundColor: AppColors.primaryLight,
+                    backgroundImage: driver.photoUrl != null
+                        ? NetworkImage(driver.photoUrl!)
+                        : null,
+                    child: driver.photoUrl == null
+                        ? Text(driver.name.isNotEmpty ? driver.name[0] : '?',
+                            style: const TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryDark))
+                        : null,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1678,25 +1819,23 @@ class _DriverProfileSheet extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        driver.name,
-                        style: const TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.bold),
-                      ),
-                      Text(driver.vanCode,
+                      Text(driver.name,
                           style: const TextStyle(
-                              color: AppColors.textSecondary)),
+                              fontSize: 20, fontWeight: FontWeight.bold)),
+                      Text('VanCode: ${driver.vanCode}',
+                          style: const TextStyle(color: AppColors.textSecondary)),
                       Row(
-                        children: List.generate(
-                          5,
-                          (i) => Icon(
-                            i < driver.rating.floor()
-                                ? Icons.star
-                                : Icons.star_border,
-                            size: 18,
-                            color: AppColors.primary,
+                        children: [
+                          const Icon(Icons.star, size: 16, color: AppColors.primary),
+                          const SizedBox(width: 4),
+                          Text(
+                            driver.rating > 0
+                                ? '${driver.rating.toStringAsFixed(1)} (${driver.ratingTotal} avaliações)'
+                                : 'Sem avaliações',
+                            style: const TextStyle(
+                                fontSize: 13, color: AppColors.textSecondary),
                           ),
-                        ),
+                        ],
                       ),
                     ],
                   ),
@@ -1704,59 +1843,93 @@ class _DriverProfileSheet extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 20),
+
+            // Bairros
             const Text('Bairros atendidos',
                 style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: driver.neighborhoods
-                  .map((n) => Chip(
-                        label:
-                            Text(n, style: const TextStyle(fontSize: 12)),
-                        backgroundColor:
-                            AppColors.primaryLight.withAlpha(80),
-                        side: BorderSide.none,
-                      ))
-                  .toList(),
-            ),
+            driver.neighborhoods.isEmpty
+                ? const Text('Não informado',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 13))
+                : Wrap(
+                    spacing: 6, runSpacing: 6,
+                    children: driver.neighborhoods
+                        .map((n) => Chip(
+                              label: Text(n,
+                                  style: const TextStyle(fontSize: 12)),
+                              backgroundColor:
+                                  AppColors.primaryLight.withAlpha(80),
+                              side: BorderSide.none,
+                            ))
+                        .toList(),
+                  ),
             const SizedBox(height: 20),
+
+            // Escolas atendidas
+            const Text('Escolas atendidas',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            driver.schools.isEmpty
+                ? const Text('Não informado',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 13))
+                : Wrap(
+                    spacing: 6, runSpacing: 6,
+                    children: driver.schools
+                        .map((s) => Chip(
+                              label: Text(s, style: const TextStyle(fontSize: 12)),
+                              backgroundColor: AppColors.surfaceVariant,
+                              side: BorderSide.none,
+                              avatar: const Icon(Icons.school_outlined,
+                                  size: 14, color: AppColors.primaryDark),
+                            ))
+                        .toList(),
+                  ),
+            const SizedBox(height: 20),
+
+            // Documentos
             const Text('Documentos',
                 style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            // Required docs (CNH, CRLV) - show check/cancel
-            const _DocRow(
-                icon: Icons.credit_card,
-                label: 'CNH',
-                ok: true,
-                optional: false),
-            const _DocRow(
-                icon: Icons.directions_bus,
-                label: 'CRLV',
-                ok: true,
-                optional: false),
-            // Optional docs not sent → neutral/gray, not red
-            const _DocRow(
-                icon: Icons.account_balance,
-                label: 'Autorização Prefeitura',
-                ok: false,
-                optional: true),
-            const _DocRow(
-                icon: Icons.shield_outlined,
-                label: 'Apólice APP',
-                ok: true,
-                optional: false),
-            const SizedBox(height: 20),
-            const Text('Avaliações',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            _DocRow(icon: Icons.credit_card,        label: 'CNH',                    ok: driver.docCnh,           optional: false),
+            _DocRow(icon: Icons.directions_bus,     label: 'CRLV',                   ok: driver.docCrlv,          optional: false),
+            _DocRow(icon: Icons.shield_outlined,    label: 'Seguro APP',             ok: driver.docSeguro,        optional: true),
+            _DocRow(icon: Icons.account_balance,    label: 'Alvará / Autorização',   ok: driver.docAutorizacao,   optional: true),
+            const SizedBox(height: 24),
+
+            // Botão WhatsApp
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _openWhatsApp(context),
+                icon: SvgPicture.asset(
+                  'assets/icons/whatsapp.svg',
+                  width: 20, height: 20,
+                  colorFilter: const ColorFilter.mode(
+                      Color(0xFF25D366), BlendMode.srcIn),
+                ),
+                label: const Text('Entrar em contato pelo WhatsApp'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF25D366),
+                  side: const BorderSide(color: Color(0xFF25D366)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: null, // Em breve
+                icon: const Icon(Icons.calculate_outlined),
+                label: const Text('Simular orçamento — em breve'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.textSecondary,
+                  side: const BorderSide(color: AppColors.textDisabled),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
             const SizedBox(height: 8),
-            const _ReviewRow(
-                comment: 'Muito pontual e cuidadoso com as crianças.',
-                stars: 5),
-            const _ReviewRow(
-                comment:
-                    'Ótimo motorista, sempre avisa quando vai atrasar.',
-                stars: 4),
           ],
         ),
       ),
@@ -1770,7 +1943,8 @@ class _DocRow extends StatelessWidget {
   final bool ok;
   final bool optional;
 
-  const _DocRow({
+  // ignore: prefer_const_constructors_in_immutables
+  _DocRow({
     required this.icon,
     required this.label,
     required this.ok,
@@ -1801,39 +1975,7 @@ class _DocRow extends StatelessWidget {
   }
 }
 
-class _ReviewRow extends StatelessWidget {
-  final String comment;
-  final int stars;
-
-  const _ReviewRow({required this.comment, required this.stars});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: List.generate(
-              5,
-              (i) => Icon(
-                i < stars ? Icons.star : Icons.star_border,
-                size: 14,
-                color: AppColors.primary,
-              ),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(comment,
-              style: const TextStyle(
-                  fontSize: 12, color: AppColors.textSecondary)),
-          const Divider(height: 16),
-        ],
-      ),
-    );
-  }
-}
+// _ReviewRow removido — avaliações serão carregadas da API no futuro
 
 // ---------------------------------------------------------------------------
 // Tab 5 — Communication Status
