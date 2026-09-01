@@ -57,3 +57,4 @@ backend/api/personalização do agente do verdent.txt
 lib/firebase_options.dart
 android/app/google-services.json
 backend/config/service_account.json
+backend/config/rtdb_secret.php

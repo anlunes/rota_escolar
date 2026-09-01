@@ -70,6 +70,46 @@ class FirebaseAdmin {
     }
 
     /**
+     * Gera um link de verificação de e-mail sem enviar pelo Firebase.
+     * Retorna a URL completa do link de verificação.
+     */
+    public static function generateEmailVerificationLink(string $email): string {
+        $token     = self::getAccessToken();
+        $sa        = self::loadServiceAccount();
+        $projectId = $sa['project_id'];
+
+        $ch = curl_init("https://identitytoolkit.googleapis.com/v1/projects/$projectId/accounts:sendOobCode");
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                "Authorization: Bearer $token",
+            ],
+            CURLOPT_POSTFIELDS     => json_encode([
+                'requestType'   => 'VERIFY_EMAIL',
+                'email'         => $email,
+                'returnOobLink' => true,
+                'languageCode'  => 'pt-BR',
+            ]),
+        ]);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $data = json_decode($response, true);
+
+        if ($httpCode !== 200 || empty($data['oobLink'])) {
+            $msg = $data['error']['message'] ?? $response;
+            error_log("[FirebaseAdmin] generateEmailVerificationLink error ($httpCode): $msg");
+            throw new Exception($msg);
+        }
+
+        return $data['oobLink'];
+    }
+
+    /**
      * Gera um link de redefinição de senha sem enviar e-mail pelo Firebase.
      * Retorna a URL completa do link de reset.
      */
@@ -91,6 +131,7 @@ class FirebaseAdmin {
                 'requestType'   => 'PASSWORD_RESET',
                 'email'         => $email,
                 'returnOobLink' => true,
+                'languageCode'  => 'pt-BR',
             ]),
         ]);
         $response = curl_exec($ch);

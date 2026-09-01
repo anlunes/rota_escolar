@@ -12,11 +12,13 @@ class AuthState {
   final AuthUserModel? user;
   final bool isLoading;
   final String? errorMessage;
+  final String? pendingVerificationEmail;
 
   const AuthState({
     this.user,
     this.isLoading = false,
     this.errorMessage,
+    this.pendingVerificationEmail,
   });
 
   bool get isAuthenticated => user != null;
@@ -26,13 +28,16 @@ class AuthState {
     AuthUserModel? user,
     bool? isLoading,
     String? errorMessage,
+    String? pendingVerificationEmail,
     bool clearUser = false,
     bool clearError = false,
+    bool clearPendingEmail = false,
   }) {
     return AuthState(
       user: clearUser ? null : (user ?? this.user),
       isLoading: isLoading ?? this.isLoading,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      pendingVerificationEmail: clearPendingEmail ? null : (pendingVerificationEmail ?? this.pendingVerificationEmail),
     );
   }
 }
@@ -93,13 +98,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
         whatsapp: whatsapp,
         role: role,
       );
-      state = state.copyWith(isLoading: false, user: user);
+      // Não autentica — aguarda verificação de email
+      state = state.copyWith(
+        isLoading: false,
+        pendingVerificationEmail: user.email,
+      );
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
         errorMessage: e.toString().replaceFirst('Exception: ', ''),
       );
     }
+  }
+
+  void clearPendingEmail() {
+    state = state.copyWith(clearPendingEmail: true);
   }
 
   Future<void> logout() async {

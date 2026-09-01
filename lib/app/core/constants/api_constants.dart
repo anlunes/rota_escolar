@@ -19,9 +19,10 @@ class ApiConstants {
   }
 
   // Endpoints
-  static const String authRegister       = '/api/auth/register.php';
-  static const String authProfile        = '/api/auth/profile.php';
-  static const String authForgotPassword = '/api/auth/forgot_password.php';
+  static const String authRegister          = '/api/auth/register.php';
+  static const String authProfile           = '/api/auth/profile.php';
+  static const String authForgotPassword    = '/api/auth/forgot_password.php';
+  static const String authSendVerification  = '/api/auth/send_verification.php';
 
   static const String studentsIndex = '/api/students/index.php';
   static const String studentsUpdate = '/api/students/update.php';
@@ -39,6 +40,7 @@ class ApiConstants {
   static const String routesIndex = '/api/routes/index.php';
   static const String routesReorder = '/api/routes/reorder.php';
   static const String routesUpdateStatus = '/api/routes/update_status.php';
+  static const String routesReport = '/api/routes/report.php';
 
   static const String evaluationsCreate = '/api/evaluations/create.php';
   static const String evaluationsIndex = '/api/evaluations/index.php';

@@ -105,10 +105,14 @@ class AuthRepository {
         return _mockLogin(email, password);
       }
 
-      // Atualiza emailVerified no Firestore se confirmado
-      if (fbUser.emailVerified) {
-        _updateEmailVerifiedInFirestore(fbUser.uid);
+      // Bloqueia login se e-mail não foi verificado
+      if (!fbUser.emailVerified) {
+        await _firebaseAuth?.signOut();
+        throw Exception('E-mail não verificado. Acesse sua caixa de entrada e clique no link de confirmação.');
       }
+
+      // Atualiza emailVerified no Firestore
+      _updateEmailVerifiedInFirestore(fbUser.uid);
 
       // Tenta obter role do Firestore primeiro
       final roleStr = await _getRoleFromFirestore(fbUser.uid);
@@ -210,13 +214,24 @@ class AuthRepository {
         debugPrint('[AuthRepository] API register call failed, continuing: $e');
       }
 
-      // 5. Envia e-mail de verificação
+      // 5. Envia e-mail de verificação pelo nosso backend (remetente rotaescolar.app.br)
       try {
-        await fbUser.sendEmailVerification();
-        debugPrint('[AuthRepository] Email verification sent to $email');
+        await _apiService.post(
+          ApiConstants.authSendVerification,
+          data: {'email': email, 'nome': name},
+        );
+        debugPrint('[AuthRepository] Email verification sent via backend to $email');
       } catch (e) {
-        debugPrint('[AuthRepository] sendEmailVerification error: $e');
+        debugPrint('[AuthRepository] send_verification backend error: $e');
+        // Fallback: Firebase envia diretamente
+        try {
+          await _firebaseAuth?.setLanguageCode('pt-BR');
+          await fbUser.sendEmailVerification();
+        } catch (_) {}
       }
+
+      // 6. Desloga — app só acessa após confirmar o e-mail
+      await _firebaseAuth?.signOut();
 
       return AuthUserModel(
         uid: fbUser.uid,

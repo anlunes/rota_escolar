@@ -6,6 +6,7 @@ import '../../../app/core/constants/api_constants.dart';
 import '../../../app/core/constants/status_constants.dart';
 
 import '../domain/models/student_summary.dart';
+import '../domain/models/route_report_entry.dart';
 
 /// Repositório de alunos do responsável.
 class StudentsRepository {
@@ -166,6 +167,27 @@ class StudentsRepository {
     if (data is! Map || data['success'] != true) {
       final msg = data is Map ? (data['message'] ?? 'Erro ao reativar') : 'Erro ao reativar';
       throw Exception(msg);
+    }
+  }
+
+  /// Busca histórico de rotas dos últimos [days] dias para os alunos do responsável.
+  Future<List<RouteReportEntry>> fetchReport({int days = 14}) async {
+    try {
+      final response = await _api.get(
+        ApiConstants.routesReport,
+        queryParameters: {'days': days},
+      );
+      final data = response.data;
+      if (data is Map && data['success'] == true) {
+        final list = data['data'] as List<dynamic>;
+        return list
+            .map((e) => RouteReportEntry.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('[StudentsRepository] fetchReport error: $e');
+      return [];
     }
   }
 

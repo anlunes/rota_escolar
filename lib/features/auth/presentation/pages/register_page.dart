@@ -42,15 +42,17 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
 
     if (!mounted) return;
     final state = ref.read(authNotifierProvider);
-    if (state.user != null && state.errorMessage == null) {
+    if (state.pendingVerificationEmail != null && state.errorMessage == null) {
+      final email = state.pendingVerificationEmail!;
+      ref.read(authNotifierProvider.notifier).clearPendingEmail();
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
           title: const Text('Verifique seu e-mail'),
           content: Text(
-            'Enviamos um link de verificação para ${state.user!.email}.\n\n'
-            'Acesse sua caixa de entrada e clique no link para confirmar seu cadastro.',
+            'Enviamos um link de verificação para $email.\n\n'
+            'Acesse sua caixa de entrada, clique no link e depois faça login.',
           ),
           actions: [
             TextButton(
@@ -60,6 +62,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           ],
         ),
       );
+      if (mounted) Navigator.of(context).pop(); // volta para o login
     }
   }
 
@@ -134,7 +137,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                   ),
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Informe o e-mail';
-                    if (!v.contains('@')) return 'E-mail inválido';
+                    final emailRegex = RegExp(r'^[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}(\.[a-zA-Z]{2,})?$');
+                    if (!emailRegex.hasMatch(v.trim())) return 'E-mail inválido';
                     return null;
                   },
                 ),
@@ -174,8 +178,14 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                     prefixIcon: Icon(Icons.phone_outlined),
                     hintText: '(11) 99999-9999',
                   ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Informe o WhatsApp' : null,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Informe o WhatsApp';
+                    final digits = v.replaceAll(RegExp(r'\D'), '');
+                    if (digits.length < 10 || digits.length > 11) {
+                      return 'Número inválido — use DDD + número (ex: 21 99999-9999)';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 20),
 

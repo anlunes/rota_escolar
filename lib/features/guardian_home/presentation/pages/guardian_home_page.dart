@@ -10,12 +10,21 @@ import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../application/guardian_home_provider.dart';
 import '../../domain/models/student_summary.dart';
+import '../../domain/models/route_report_entry.dart';
+import '../../data/students_repository.dart';
 import '../../../../features/evaluation/presentation/widgets/monthly_evaluation_modal.dart';
 import '../../../../features/auth/application/auth_state_provider.dart';
 import '../../../../app/core/constants/status_constants.dart';
 import '../../../../app/core/widgets/status_chip.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/core/constants/api_constants.dart';
+
+// ---------------------------------------------------------------------------
+// Provider de relatório de rotas do responsável
+// ---------------------------------------------------------------------------
+final _routeReportProvider = FutureProvider.autoDispose<List<RouteReportEntry>>((ref) {
+  return ref.read(studentsRepositoryProvider).fetchReport(days: 14);
+});
 
 // ---------------------------------------------------------------------------
 // Available driver model
@@ -2112,76 +2121,95 @@ class _RouteReportTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(guardianHomeProvider);
-    // Generate mock report entries for the last 14 days
-    final today = DateTime.now();
-    final days = List.generate(14, (i) => today.subtract(Duration(days: i)));
-    final fmt = DateFormat('dd/MM/yyyy');
+    final async = ref.watch(_routeReportProvider);
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text(
-          'Relatório de Rotas — últimos 14 dias',
-          style: Theme.of(context)
-              .textTheme
-              .titleSmall
-              ?.copyWith(fontWeight: FontWeight.bold),
+    return async.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: AppColors.error, size: 40),
+            const SizedBox(height: 8),
+            Text('Erro ao carregar relatório', style: Theme.of(context).textTheme.bodyMedium),
+          ],
         ),
-        const SizedBox(height: 12),
-        ...days.expand((day) => state.students.map((student) =>
-            _StudentRouteReport(
-              student: student,
-              date: fmt.format(day),
-              showTimes: day.isBefore(today.add(const Duration(days: 1))),
-            ))),
-      ],
+      ),
+      data: (entries) {
+        if (entries.isEmpty) {
+          return const Center(
+            child: Text(
+              'Nenhuma rota registrada nos últimos 14 dias.',
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              'Relatório de Rotas — últimos 14 dias',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            ...entries.expand((entry) => entry.students.map((s) =>
+                _StudentRouteReport(
+                  nome: s.nome,
+                  date: DateFormat('dd/MM/yyyy').format(DateTime.parse(entry.date)),
+                  horarioEmbarque: s.horarioEmbarque,
+                  horarioEscola: s.horarioEscola,
+                  horarioVolta: s.horarioVolta,
+                  horarioCasa: s.horarioCasa,
+                ))),
+          ],
+        );
+      },
     );
   }
 }
 
 class _StudentRouteReport extends StatelessWidget {
-  final StudentSummary student;
+  final String nome;
   final String date;
-  final bool showTimes;
+  final String horarioEmbarque;
+  final String horarioEscola;
+  final String horarioVolta;
+  final String horarioCasa;
 
   const _StudentRouteReport({
-    required this.student,
+    required this.nome,
     required this.date,
-    required this.showTimes,
+    required this.horarioEmbarque,
+    required this.horarioEscola,
+    required this.horarioVolta,
+    required this.horarioCasa,
   });
 
   List<_RouteEvent> _buildEvents() {
-    final times = student.stepTimes;
     return [
       _RouteEvent(
-        time: showTimes && times != null && times.length > 1
-            ? times[1]
-            : '--:--',
+        time: horarioEmbarque,
         label: 'Embarcou na van',
         icon: Icons.directions_bus,
         color: AppColors.info,
       ),
       _RouteEvent(
-        time: showTimes && times != null && times.length > 2
-            ? times[2]
-            : '--:--',
+        time: horarioEscola,
         label: 'Na escola',
         icon: Icons.school,
         color: AppColors.success,
       ),
       _RouteEvent(
-        time: showTimes && times != null && times.length > 3
-            ? times[3]
-            : '--:--',
+        time: horarioVolta,
         label: 'Embarcou na van (volta)',
         icon: Icons.directions_bus_filled,
         color: AppColors.warning,
       ),
       _RouteEvent(
-        time: showTimes && times != null && times.length > 4
-            ? times[4]
-            : '--:--',
+        time: horarioCasa,
         label: 'Em casa',
         icon: Icons.home_filled,
         color: AppColors.success,
@@ -2222,7 +2250,7 @@ class _StudentRouteReport extends StatelessWidget {
                 CircleAvatar(
                   radius: 16,
                   backgroundColor: AppColors.primaryLight,
-                  child: Text(student.name.isNotEmpty ? student.name[0].toUpperCase() : '?',
+                  child: Text(nome.isNotEmpty ? nome[0].toUpperCase() : '?',
                       style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
@@ -2230,7 +2258,7 @@ class _StudentRouteReport extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  student.name,
+                  nome,
                   style: const TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 15),
                 ),
