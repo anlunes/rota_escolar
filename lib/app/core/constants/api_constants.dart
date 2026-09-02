@@ -22,6 +22,7 @@ class ApiConstants {
   static const String authRegister          = '/api/auth/register.php';
   static const String authProfile           = '/api/auth/profile.php';
   static const String authForgotPassword    = '/api/auth/forgot_password.php';
+  static const String authVerifyResetCode   = '/api/auth/verify_reset_code.php';
   static const String authSendVerification  = '/api/auth/send_verification.php';
 
   static const String studentsIndex = '/api/students/index.php';

@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../application/auth_state_provider.dart';
 import '../../../../app/core/constants/api_constants.dart';
 import '../../../../app/core/widgets/app_button.dart';
@@ -52,13 +55,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         data: {'email': email},
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Se este e-mail estiver cadastrado, você receberá as instruções em breve.'),
-            backgroundColor: AppColors.success,
-            duration: Duration(seconds: 5),
-          ),
-        );
+        _showResetCodeDialog(email);
       }
     } catch (_) {
       if (mounted) {
@@ -67,6 +64,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         );
       }
     }
+  }
+
+  void _showResetCodeDialog(String email) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _ResetCodeDialog(email: email),
+    );
   }
 
   @override
@@ -248,3 +253,230 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Dialog de código de redefinição — fica em memória mesmo ao alternar apps
+// ---------------------------------------------------------------------------
+
+class _ResetCodeDialog extends StatefulWidget {
+  final String email;
+  const _ResetCodeDialog({required this.email});
+
+  @override
+  State<_ResetCodeDialog> createState() => _ResetCodeDialogState();
+}
+
+class _ResetCodeDialogState extends State<_ResetCodeDialog> {
+  final _controllers = List.generate(6, (_) => TextEditingController());
+  final _focusNodes  = List.generate(6, (_) => FocusNode());
+
+  bool _isLoading   = false;
+  bool _isResending = false;
+  int  _cooldown    = 60;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCooldown();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    for (final c in _controllers) c.dispose();
+    for (final f in _focusNodes) f.dispose();
+    super.dispose();
+  }
+
+  void _startCooldown() {
+    setState(() => _cooldown = 60);
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      if (_cooldown <= 0) { t.cancel(); return; }
+      setState(() => _cooldown--);
+    });
+  }
+
+  String get _code => _controllers.map((c) => c.text).join();
+
+  void _onDigitChanged(int index, String value) {
+    if (value.length == 6) {
+      for (int i = 0; i < 6; i++) _controllers[i].text = value[i];
+      _focusNodes.last.requestFocus();
+      return;
+    }
+    if (value.isNotEmpty && index < 5) _focusNodes[index + 1].requestFocus();
+    if (value.isEmpty && index > 0)    _focusNodes[index - 1].requestFocus();
+  }
+
+  Future<void> _verify() async {
+    if (_code.length < 6) {
+      _showMsg('Digite todos os 6 dígitos.', isError: true);
+      return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      final dio = Dio();
+      final res = await dio.post(
+        '${ApiConstants.baseUrl}${ApiConstants.authVerifyResetCode}',
+        data: {'email': widget.email, 'code': _code},
+      );
+      final resetLink = res.data['data']['reset_link'] as String?;
+      if (resetLink != null && mounted) {
+        final uri = Uri.parse(resetLink);
+        // Abre o browser ANTES de fechar o dialog
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Crie sua nova senha no navegador e volte para fazer login.'),
+              backgroundColor: AppColors.success,
+              duration: Duration(seconds: 6),
+            ),
+          );
+        }
+      }
+    } on DioException catch (e) {
+      final msg = e.response?.data?['message'] as String? ??
+          'Código inválido ou expirado.';
+      _showMsg(msg, isError: true);
+      for (final c in _controllers) c.clear();
+      _focusNodes.first.requestFocus();
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _resend() async {
+    setState(() => _isResending = true);
+    try {
+      await Dio().post(
+        '${ApiConstants.baseUrl}${ApiConstants.authForgotPassword}',
+        data: {'email': widget.email},
+      );
+      if (mounted) {
+        _showMsg('Novo código enviado!');
+        _startCooldown();
+        for (final c in _controllers) c.clear();
+        _focusNodes.first.requestFocus();
+      }
+    } catch (_) {
+      _showMsg('Não foi possível reenviar.', isError: true);
+    } finally {
+      if (mounted) setState(() => _isResending = false);
+    }
+  }
+
+  void _showMsg(String msg, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: isError ? AppColors.error : AppColors.success,
+    ));
+  }
+
+  String _masked(String email) {
+    final parts = email.split('@');
+    if (parts.length != 2) return email;
+    final local = parts[0];
+    if (local.length <= 2) return email;
+    return '${local[0]}${'*' * (local.length - 2)}${local[local.length - 1]}@${parts[1]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.mark_email_read_outlined,
+                size: 48, color: AppColors.primary),
+            const SizedBox(height: 16),
+            const Text('Verifique seu e-mail',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(
+              'Enviamos um código de 6 dígitos para\n${_masked(widget.email)}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 24),
+
+            // Campos de 6 dígitos
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(6, (i) {
+                return SizedBox(
+                  width: 42,
+                  height: 50,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: TextFormField(
+                      controller: _controllers[i],
+                      focusNode: _focusNodes[i],
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      maxLength: i == 0 ? 6 : 1,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      decoration: InputDecoration(
+                        counterText: '',
+                        contentPadding: EdgeInsets.zero,
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFBDBDBD)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                        ),
+                      ),
+                      onChanged: (v) => _onDigitChanged(i, v),
+                    ),
+                  ),
+                );
+              }),
+            ),
+
+            const SizedBox(height: 24),
+
+            AppButton(
+              label: 'Confirmar código',
+              onPressed: _verify,
+              isLoading: _isLoading,
+              width: double.infinity,
+            ),
+
+            const SizedBox(height: 12),
+
+            if (_cooldown > 0)
+              Text('Reenviar em ${_cooldown}s',
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12))
+            else
+              TextButton(
+                onPressed: _isResending ? null : _resend,
+                child: _isResending
+                    ? const SizedBox(width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Não recebi — reenviar'),
+              ),
+
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar',
+                  style: TextStyle(color: AppColors.textSecondary)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

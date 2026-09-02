@@ -148,4 +148,38 @@ class FirebaseAdmin {
 
         return $data['oobLink'];
     }
+
+    /**
+     * Atualiza a senha de um usuário diretamente via Admin SDK.
+     */
+    public static function updateUserPassword(string $uid, string $newPassword): void {
+        $token = self::getAccessToken();
+
+        // Endpoint correto para Identity Toolkit v1 com OAuth2 Bearer (admin)
+        $ch = curl_init("https://identitytoolkit.googleapis.com/v1/accounts:update");
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                "Authorization: Bearer $token",
+            ],
+            CURLOPT_POSTFIELDS => json_encode([
+                'localId'  => $uid,
+                'password' => $newPassword,
+            ]),
+        ]);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $data = json_decode($response, true);
+        error_log("[FirebaseAdmin] updateUserPassword HTTP $httpCode uid=$uid response=" . substr($response, 0, 300));
+
+        if ($httpCode !== 200 || empty($data['localId'])) {
+            $msg = $data['error']['message'] ?? "HTTP $httpCode: $response";
+            throw new Exception($msg);
+        }
+    }
 }

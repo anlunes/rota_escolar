@@ -106,7 +106,8 @@ class _GuardianHomePageState extends ConsumerState<GuardianHomePage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (shouldShowMonthlyEvaluation()) {
+      final role = ref.read(authNotifierProvider).role;
+      if (role == UserRole.guardian && shouldShowMonthlyEvaluation()) {
         showDialog(
           context: context,
           barrierDismissible: false,

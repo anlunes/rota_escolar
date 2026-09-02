@@ -10,6 +10,7 @@ import '../../features/auth/presentation/pages/terms_page.dart';
 import '../../features/driver_home/presentation/pages/driver_home_page.dart';
 import '../../features/guardian_home/presentation/pages/guardian_home_page.dart';
 import '../../features/faq/presentation/pages/faq_page.dart';
+import '../../features/auth/presentation/pages/reset_code_page.dart';
 import '../../app/core/constants/status_constants.dart';
 
 // ---------------------------------------------------------------------------
@@ -39,6 +40,7 @@ class AppRoutes {
   static const driverHome = '/driver';
   static const guardianHome = '/guardian';
   static const faq = '/faq';
+  static const resetCode = '/reset-code';
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +84,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       final isPublicRoute = loc == AppRoutes.splash ||
           loc == AppRoutes.login ||
-          loc == AppRoutes.register;
+          loc == AppRoutes.register ||
+          loc == AppRoutes.resetCode;
 
       if (!isAuthenticated && !isPublicRoute) {
         return AppRoutes.login;
@@ -153,6 +156,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.faq,
         builder: (context, state) => const FaqPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.resetCode,
+        builder: (context, state) {
+          final email = state.extra as String? ?? '';
+          return ResetCodePage(email: email);
+        },
       ),
     ],
   );

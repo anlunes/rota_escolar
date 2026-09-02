@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redefinir senha — Rota Escolar</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 40px 32px;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      text-align: center;
+    }
+
+    .brand {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #FFB300;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #212121;
+      margin-bottom: 8px;
+    }
+
+    p {
+      font-size: 14px;
+      color: #757575;
+      margin-bottom: 32px;
+      line-height: 1.5;
+    }
+
+    .field {
+      margin-bottom: 16px;
+      text-align: left;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #424242;
+      margin-bottom: 6px;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    input[type="password"],
+    input[type="text"] {
+      width: 100%;
+      padding: 14px 44px 14px 14px;
+      border: 1.5px solid #BDBDBD;
+      border-radius: 10px;
+      font-size: 15px;
+      color: #212121;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus { border-color: #FFD700; }
+
+    .toggle-btn {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      color: #9E9E9E;
+      padding: 4px;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: #9E9E9E;
+      margin-top: 4px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 16px;
+      background: #FFD700;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #212121;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity 0.2s;
+    }
+
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn:hover:not(:disabled) { opacity: 0.85; }
+
+    .msg {
+      margin-top: 20px;
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      display: none;
+    }
+
+    .msg.success {
+      background: #E8F5E9;
+      color: #2E7D32;
+      border: 1px solid #A5D6A7;
+    }
+
+    .msg.error {
+      background: #FFEBEE;
+      color: #C62828;
+      border: 1px solid #EF9A9A;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">Rota Escolar</div>
+
+    <div id="form-section">
+      <h1>Nova senha</h1>
+      <p>Escolha uma senha segura com pelo menos 6 caracteres.</p>
+
+      <div class="field">
+        <label for="password">Nova senha</label>
+        <div class="input-wrap">
+          <input type="password" id="password" placeholder="••••••••" autocomplete="new-password" />
+          <button class="toggle-btn" type="button" onclick="toggle('password', 'eye1')" id="eye1">👁</button>
+        </div>
+        <div class="hint">Mínimo de 6 caracteres</div>
+      </div>
+
+      <div class="field">
+        <label for="confirm">Confirmar nova senha</label>
+        <div class="input-wrap">
+          <input type="password" id="confirm" placeholder="••••••••" autocomplete="new-password" />
+          <button class="toggle-btn" type="button" onclick="toggle('confirm', 'eye2')" id="eye2">👁</button>
+        </div>
+      </div>
+
+      <button class="btn" id="btn" onclick="submit()">Redefinir senha</button>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <div id="success-section" style="display:none">
+      <div class="brand">Rota Escolar</div>
+      <h1>Senha alterada!</h1>
+      <p style="margin-top:12px">Sua senha foi redefinida com sucesso.<br>Você receberá um e-mail de confirmação.<br><br>Volte ao app para fazer login.</p>
+    </div>
+  </div>
+
+  <script>
+    const token = new URLSearchParams(window.location.search).get('token');
+
+    if (!token) {
+      document.getElementById('msg').textContent = 'Link inválido ou expirado.';
+      document.getElementById('msg').className = 'msg error';
+      document.getElementById('msg').style.display = 'block';
+      document.getElementById('btn').disabled = true;
+    }
+
+    function toggle(fieldId, btnId) {
+      const field = document.getElementById(fieldId);
+      field.type = field.type === 'password' ? 'text' : 'password';
+    }
+
+    function showMsg(text, type) {
+      const el = document.getElementById('msg');
+      el.textContent = text;
+      el.className = 'msg ' + type;
+      el.style.display = 'block';
+    }
+
+    async function submit() {
+      const password = document.getElementById('password').value;
+      const confirm  = document.getElementById('confirm').value;
+      const btn      = document.getElementById('btn');
+
+      if (password.length < 6) {
+        showMsg('A senha deve ter pelo menos 6 caracteres.', 'error');
+        return;
+      }
+      if (password !== confirm) {
+        showMsg('As senhas não coincidem. Verifique e tente novamente.', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Aguarde...';
+
+      try {
+        const res  = await fetch('/api/auth/reset_password.php', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ token, password }),
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          document.getElementById('form-section').style.display = 'none';
+          document.getElementById('success-section').style.display = 'block';
+        } else {
+          showMsg(data.message || 'Erro ao redefinir senha. Tente novamente.', 'error');
+          btn.disabled = false;
+          btn.textContent = 'Redefinir senha';
+        }
+      } catch (e) {
+        showMsg('Erro de conexão. Verifique sua internet e tente novamente.', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Redefinir senha';
+      }
+    }
+  </script>
+</body>
+</html>
