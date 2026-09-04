@@ -67,7 +67,11 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
   int _motoristaId = 0;
   double _rating = 0;
   int _ratingCount = 0;
+  int _vagasVan = 0;
+  int _alunosManha = 0;
+  int _alunosTarde = 0;
   final TextEditingController _whatsappController = TextEditingController();
+  final TextEditingController _vagasVanController = TextEditingController();
 
   @override
   void initState() {
@@ -139,6 +143,7 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
   @override
   void dispose() {
     _whatsappController.dispose();
+    _vagasVanController.dispose();
     super.dispose();
   }
 
@@ -393,9 +398,13 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
             )).toList();
             _prefEstadoId      = estadoId;
             _prefMunicipioId   = municipioId;
-            _vanCode     = data['van_code'];
-            _whatsapp    = data['whatsapp'];
-            _alunosAtivos = (data['alunos_ativos'] as num? ?? 0).toInt();
+            _vanCode      = data['van_code'];
+            _whatsapp     = data['whatsapp'];
+            _alunosAtivos = int.tryParse(data['alunos_ativos']?.toString() ?? '0') ?? 0;
+            _alunosManha = int.tryParse(data['alunos_manha']?.toString() ?? '0') ?? 0;
+            _alunosTarde = int.tryParse(data['alunos_tarde']?.toString() ?? '0') ?? 0;
+            _vagasVan    = int.tryParse(data['vagas_van']?.toString()    ?? '0') ?? 0;
+            _vagasVanController.text = _vagasVan > 0 ? '$_vagasVan' : '';
             final whatsappDb       = (data['whatsapp']           as String?) ?? '';
             final telefoneCadastro = (data['telefone_cadastro']  as String?) ?? '';
             _whatsappController.text = whatsappDb.isNotEmpty
@@ -448,6 +457,7 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
         'estado_id':    _prefEstadoId,
         'municipio_id': _prefMunicipioId,
         'whatsapp':     _whatsappController.text.trim(),
+        'vagas_van': int.tryParse(_vagasVanController.text.trim()) ?? 0,
       },
       options: Options(headers: token != null ? {'Authorization': 'Bearer $token'} : {}),
     );
@@ -792,6 +802,47 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
                         label: 'Alunos ativos',
                         value: _alunosAtivos > 0 ? '$_alunosAtivos' : '—',
                       ),
+                      const Divider(height: 20),
+                      // Capacidade total da van
+                      Row(
+                        children: [
+                          const Text('Vagas no veículo',
+                              style: TextStyle(color: AppColors.textSecondary)),
+                          const Spacer(),
+                          SizedBox(
+                            width: 56,
+                            child: TextField(
+                              controller: _vagasVanController,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 14),
+                              decoration: const InputDecoration(
+                                hintText: '0',
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_vagasVan > 0) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            _TurnoVagasIndicator(
+                                turno: 'Manhã',
+                                ocupadas: _alunosManha,
+                                total: _vagasVan),
+                            const SizedBox(width: 8),
+                            _TurnoVagasIndicator(
+                                turno: 'Tarde',
+                                ocupadas: _alunosTarde,
+                                total: _vagasVan),
+                          ],
+                        ),
+                      ],
                       const Divider(height: 20),
                       Row(
                         children: [
@@ -1354,6 +1405,38 @@ class _MyReviewsSheetState extends State<_MyReviewsSheet> {
                           ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+class _TurnoVagasIndicator extends StatelessWidget {
+  final String turno;
+  final int ocupadas;
+  final int total;
+
+  const _TurnoVagasIndicator({
+    required this.turno,
+    required this.ocupadas,
+    required this.total,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final livres = (total - ocupadas).clamp(0, total);
+    final color = livres > 0 ? AppColors.success : AppColors.warning;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withAlpha(20),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withAlpha(60)),
+      ),
+      child: Text(
+        '$turno: $livres livre${livres != 1 ? 's' : ''} · $ocupadas ocupada${ocupadas != 1 ? 's' : ''}',
+        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
       ),
     );
   }

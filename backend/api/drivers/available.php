@@ -49,7 +49,8 @@ try {
             CASE WHEN m.crlv_url        IS NOT NULL AND m.crlv_url        != '' THEN 1 ELSE 0 END AS doc_crlv,
             CASE WHEN m.seguro_url      IS NOT NULL AND m.seguro_url      != '' THEN 1 ELSE 0 END AS doc_seguro,
             CASE WHEN m.autorizacao_url IS NOT NULL AND m.autorizacao_url != '' THEN 1 ELSE 0 END AS doc_autorizacao,
-            COALESCE((SELECT COUNT(*) FROM alunos WHERE motorista_id = m.motorista_id AND ativo = 1), 0) AS alunos_ativos
+            COALESCE((SELECT COUNT(*) FROM alunos WHERE motorista_id = m.motorista_id AND ativo = 1), 0) AS alunos_ativos,
+            COALESCE(m.vagas_van, 0) AS vagas_van
         FROM motoristas m
         WHERE m.ativo = 1
         ORDER BY m.nome ASC
@@ -87,12 +88,27 @@ try {
         ORDER BY e.nome
     ");
 
+    $turnosStmt = $pdo->prepare("
+        SELECT
+            COUNT(CASE WHEN turno = 'manha' THEN 1 END) AS manha,
+            COUNT(CASE WHEN turno = 'tarde' THEN 1 END) AS tarde
+        FROM alunos WHERE motorista_id = ? AND ativo = 1
+    ");
+
     foreach ($motoristas as &$m) {
         $bairrosStmt->execute([$m['motorista_id']]);
         $m['bairros'] = $bairrosStmt->fetchAll(PDO::FETCH_ASSOC);
 
         $escolasStmt->execute([$m['motorista_id']]);
         $m['escolas'] = $escolasStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $turnosStmt->execute([$m['motorista_id']]);
+        $t = $turnosStmt->fetch(PDO::FETCH_ASSOC);
+        $vagasVan    = (int)$m['vagas_van'];
+        $alunosManha = (int)($t['manha'] ?? 0);
+        $alunosTarde = (int)($t['tarde'] ?? 0);
+        $m['disponivel_manha'] = max(0, $vagasVan - $alunosManha);
+        $m['disponivel_tarde'] = max(0, $vagasVan - $alunosTarde);
 
         // Rating
         $ratingMedia = 0;
@@ -114,7 +130,7 @@ try {
             'seguro'      => (bool)$m['doc_seguro'],
             'autorizacao' => (bool)$m['doc_autorizacao'],
         ];
-        unset($m['motorista_id'], $m['doc_cnh'], $m['doc_crlv'], $m['doc_seguro'], $m['doc_autorizacao']);
+        unset($m['motorista_id'], $m['doc_cnh'], $m['doc_crlv'], $m['doc_seguro'], $m['doc_autorizacao'], $m['vagas_van']);
     }
     unset($m);
 

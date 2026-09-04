@@ -24,6 +24,7 @@ try {
 
     $mStmt = $pdo->prepare("
         SELECT m.motorista_id, m.pref_estado_id, m.pref_municipio_id, m.van_code, m.whatsapp,
+               m.vagas_van,
                u.telefone
         FROM motoristas m
         LEFT JOIN usuarios u ON u.uid = m.uid
@@ -45,18 +46,33 @@ try {
         $stmt->execute([$motoristaId]);
         $bairros = $stmt->fetchAll();
 
-        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM alunos WHERE motorista_id = ? AND ativo = 1");
-        $countStmt->execute([$motoristaId]);
-        $alunosAtivos = (int) $countStmt->fetchColumn();
+        $turnosStmt = $pdo->prepare("
+            SELECT
+                COUNT(*) AS total,
+                COUNT(CASE WHEN turno = 'manha' THEN 1 END) AS manha,
+                COUNT(CASE WHEN turno = 'tarde' THEN 1 END) AS tarde
+            FROM alunos WHERE motorista_id = ? AND ativo = 1
+        ");
+        $turnosStmt->execute([$motoristaId]);
+        $turnos = $turnosStmt->fetch();
+
+        $vagasVan    = (int)($motorista['vagas_van'] ?? 0);
+        $alunosManha = (int)($turnos['manha'] ?? 0);
+        $alunosTarde = (int)($turnos['tarde'] ?? 0);
 
         Response::success([
-            'bairros'           => $bairros,
-            'estado_id'         => $motorista['pref_estado_id'],
-            'municipio_id'      => $motorista['pref_municipio_id'],
-            'van_code'          => $motorista['van_code'],
-            'whatsapp'          => $motorista['whatsapp'],
-            'telefone_cadastro' => $motorista['telefone'],
-            'alunos_ativos'     => $alunosAtivos,
+            'bairros'            => $bairros,
+            'estado_id'          => $motorista['pref_estado_id'],
+            'municipio_id'       => $motorista['pref_municipio_id'],
+            'van_code'           => $motorista['van_code'],
+            'whatsapp'           => $motorista['whatsapp'],
+            'telefone_cadastro'  => $motorista['telefone'],
+            'alunos_ativos'      => (int)($turnos['total'] ?? 0),
+            'alunos_manha'       => $alunosManha,
+            'alunos_tarde'       => $alunosTarde,
+            'vagas_van'          => $vagasVan,
+            'disponivel_manha'   => max(0, $vagasVan - $alunosManha),
+            'disponivel_tarde'   => max(0, $vagasVan - $alunosTarde),
         ]);
     }
 
@@ -65,7 +81,8 @@ try {
         $bairroIds   = $body['bairro_ids']   ?? [];
         $estadoId    = isset($body['estado_id'])    ? (int)$body['estado_id']    : null;
         $municipioId = isset($body['municipio_id']) ? (int)$body['municipio_id'] : null;
-        $whatsapp    = isset($body['whatsapp'])      ? trim($body['whatsapp'])    : null;
+        $whatsapp    = isset($body['whatsapp'])   ? trim($body['whatsapp'])             : null;
+        $vagasVan    = isset($body['vagas_van'])  ? max(0, (int)$body['vagas_van'])     : null;
 
         if (!is_array($bairroIds)) Response::error('bairro_ids deve ser um array.', 400);
 
@@ -78,9 +95,15 @@ try {
             $ins->execute([$motoristaId, (int)$bid]);
         }
 
-        // Salva preferência de localização e WhatsApp
-        $pdo->prepare("UPDATE motoristas SET pref_estado_id = ?, pref_municipio_id = ?, whatsapp = ? WHERE motorista_id = ?")
-            ->execute([$estadoId, $municipioId, $whatsapp, $motoristaId]);
+        // Salva preferência de localização, WhatsApp e capacidade da van
+        $pdo->prepare("
+            UPDATE motoristas SET
+                pref_estado_id    = ?,
+                pref_municipio_id = ?,
+                whatsapp          = ?,
+                vagas_van         = COALESCE(?, vagas_van)
+            WHERE motorista_id    = ?
+        ")->execute([$estadoId, $municipioId, $whatsapp, $vagasVan, $motoristaId]);
 
         $pdo->commit();
 

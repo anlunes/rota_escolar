@@ -47,6 +47,8 @@ class _DriverInfo {
   final bool docAutorizacao;
   final int alunosAtivos;
   final List<String> schools;
+  final int vagasDisponivelManha;
+  final int vagasDisponivelTarde;
 
   const _DriverInfo({
     required this.id,
@@ -63,6 +65,8 @@ class _DriverInfo {
     required this.docAutorizacao,
     required this.alunosAtivos,
     this.schools = const [],
+    this.vagasDisponivelManha = 0,
+    this.vagasDisponivelTarde = 0,
   });
 
   factory _DriverInfo.fromJson(Map<String, dynamic> j) {
@@ -71,11 +75,11 @@ class _DriverInfo {
         .toList() ?? [];
     final docs = j['docs_ok'] as Map? ?? {};
     return _DriverInfo(
-      id:              (j['id'] as num).toInt(),
+      id:              int.tryParse(j['id']?.toString() ?? '0') ?? 0,
       name:            j['nome']?.toString() ?? '',
       vanCode:         j['van_code']?.toString() ?? '',
-      rating:          (j['rating_media'] as num?)?.toDouble() ?? 0,
-      ratingTotal:     (j['rating_total'] as num?)?.toInt() ?? 0,
+      rating:          double.tryParse(j['rating_media']?.toString() ?? '0') ?? 0,
+      ratingTotal:     int.tryParse(j['rating_total']?.toString() ?? '0') ?? 0,
       neighborhoods:   bairros,
       whatsapp:        j['whatsapp']?.toString() ?? '',
       photoUrl:        j['foto_url']?.toString(),
@@ -83,10 +87,12 @@ class _DriverInfo {
       docCrlv:         docs['crlv'] == true,
       docSeguro:       docs['seguro'] == true,
       docAutorizacao:  docs['autorizacao'] == true,
-      alunosAtivos:    (j['alunos_ativos'] as num?)?.toInt() ?? 0,
+      alunosAtivos:    int.tryParse(j['alunos_ativos']?.toString() ?? '0') ?? 0,
       schools: (j['escolas'] as List?)
           ?.map((e) => e['nome'].toString())
           .toList() ?? [],
+      vagasDisponivelManha: int.tryParse(j['disponivel_manha']?.toString() ?? '0') ?? 0,
+      vagasDisponivelTarde: int.tryParse(j['disponivel_tarde']?.toString() ?? '0') ?? 0,
     );
   }
 }
@@ -1614,6 +1620,20 @@ class _DriverCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        _VagasChip(
+                          turno: 'Manhã',
+                          vagas: driver.vagasDisponivelManha,
+                        ),
+                        const SizedBox(width: 6),
+                        _VagasChip(
+                          turno: 'Tarde',
+                          vagas: driver.vagasDisponivelTarde,
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -1621,6 +1641,31 @@ class _DriverCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _VagasChip extends StatelessWidget {
+  final String turno;
+  final int vagas;
+
+  const _VagasChip({required this.turno, required this.vagas});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasVagas = vagas > 0;
+    final color = hasVagas ? AppColors.success : AppColors.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withAlpha(20),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withAlpha(80)),
+      ),
+      child: Text(
+        hasVagas ? '$turno: $vagas vaga${vagas > 1 ? 's' : ''}' : '$turno: lotado',
+        style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -1816,6 +1861,19 @@ class _DriverProfileSheet extends StatelessWidget {
                             ))
                         .toList(),
                   ),
+            const SizedBox(height: 20),
+
+            // Vagas disponíveis
+            const Text('Vagas disponíveis',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: _VagasTile(turno: 'Manhã', vagas: driver.vagasDisponivelManha)),
+                const SizedBox(width: 12),
+                Expanded(child: _VagasTile(turno: 'Tarde', vagas: driver.vagasDisponivelTarde)),
+              ],
+            ),
             const SizedBox(height: 20),
 
             // Documentos
@@ -2156,6 +2214,49 @@ class _DriverReviewsSheetState extends State<_DriverReviewsSheet> {
                               }),
                             ],
                           ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+class _VagasTile extends StatelessWidget {
+  final String turno;
+  final int vagas;
+
+  const _VagasTile({required this.turno, required this.vagas});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasVagas = vagas > 0;
+    final color = hasVagas ? AppColors.success : AppColors.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+      decoration: BoxDecoration(
+        color: color.withAlpha(15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withAlpha(60)),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            hasVagas ? Icons.event_seat_outlined : Icons.do_not_disturb_alt_outlined,
+            color: color,
+            size: 22,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            turno,
+            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            hasVagas ? '$vagas vaga${vagas > 1 ? 's' : ''}' : 'Lotado',
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.bold, color: color),
           ),
         ],
       ),
