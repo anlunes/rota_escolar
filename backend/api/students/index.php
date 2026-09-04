@@ -57,7 +57,11 @@ try {
                 COALESCE(a.data_nascimento, '') AS data_nascimento,
                 COALESCE(a.van_code, '') AS van_code,
                 COALESCE(rda.status_atual, 'waiting_van') AS status_atual,
-                CAST(COALESCE(rda.vai_hoje, 1) AS SIGNED) AS vai_hoje,
+                CAST(
+                    CASE WHEN aa.id IS NOT NULL THEN 0
+                         ELSE COALESCE(rda.vai_hoje, 1)
+                    END
+                AS SIGNED) AS vai_hoje,
                 CAST(COALESCE(rda.talk_requested, 0) AS SIGNED) AS talk_requested,
                 CAST(COALESCE(rda.talk_acknowledged, 0) AS SIGNED) AS talk_acknowledged,
                 COALESCE(m.nome, '') AS driver_name,
@@ -73,6 +77,8 @@ try {
                 ORDER BY rda2.id DESC
                 LIMIT 1
             )
+            LEFT JOIN ausencias_agendadas aa
+                   ON aa.aluno_id = a.aluno_id AND aa.data = CURDATE()
             WHERE a.responsavel_id = ? AND a.ativo = 1
             ORDER BY a.nome
         ");

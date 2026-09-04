@@ -2577,12 +2577,305 @@ class _CommunicationTab extends ConsumerWidget {
                       ],
                     ),
                   ],
+                  const Divider(height: 20),
+                  // Botão agendar ausência
+                  GestureDetector(
+                    onTap: () => showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(20)),
+                      ),
+                      builder: (_) => _AbsenceSheet(
+                        alunoId: s.id,
+                        alunoNome: s.name,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.event_busy_outlined,
+                            size: 16, color: AppColors.primaryDark),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Agendar ausência',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.primaryDark,
+                              fontWeight: FontWeight.w500),
+                        ),
+                        const Spacer(),
+                        const Icon(Icons.chevron_right,
+                            size: 16, color: AppColors.textSecondary),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
           );
         }),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Absence Sheet — agendamento de ausências futuras
+// ---------------------------------------------------------------------------
+
+class _AbsenceSheet extends StatefulWidget {
+  final String alunoId;
+  final String alunoNome;
+
+  const _AbsenceSheet({required this.alunoId, required this.alunoNome});
+
+  @override
+  State<_AbsenceSheet> createState() => _AbsenceSheetState();
+}
+
+class _AbsenceSheetState extends State<_AbsenceSheet> {
+  bool _loading = true;
+  String? _error;
+  List<DateTime> _ausencias = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<String?> _token() async {
+    return await FirebaseAuth.instance.currentUser?.getIdToken();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final token = await _token();
+      final dio = Dio();
+      final res = await dio.get(
+        '${ApiConstants.baseUrl}${ApiConstants.guardianAbsences}',
+        queryParameters: {'aluno_id': int.tryParse(widget.alunoId) ?? 0},
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      final list = (res.data['data'] as List? ?? []);
+      setState(() {
+        _ausencias = list
+            .map((d) => DateTime.parse(d.toString()))
+            .toList();
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() { _error = 'Erro ao carregar ausências.'; _loading = false; });
+    }
+  }
+
+  Future<void> _addDate(DateTime date) async {
+    final dateStr = '${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}';
+    try {
+      final token = await _token();
+      final dio = Dio();
+      await dio.post(
+        '${ApiConstants.baseUrl}${ApiConstants.guardianAbsences}',
+        data: {'aluno_id': int.tryParse(widget.alunoId) ?? 0, 'data': dateStr},
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao agendar ausência.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeDate(DateTime date) async {
+    final dateStr = '${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}';
+    try {
+      final token = await _token();
+      final dio = Dio();
+      await dio.delete(
+        '${ApiConstants.baseUrl}${ApiConstants.guardianAbsences}',
+        data: {'aluno_id': int.tryParse(widget.alunoId) ?? 0, 'data': dateStr},
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao cancelar ausência.')),
+        );
+      }
+    }
+  }
+
+  DateTime _nextWeekday(DateTime from) {
+    var d = from;
+    while (d.weekday == DateTime.saturday || d.weekday == DateTime.sunday) {
+      d = d.add(const Duration(days: 1));
+    }
+    return d;
+  }
+
+  Future<void> _pickDate() async {
+    final today = DateTime.now();
+    final initialDate = _nextWeekday(today.add(const Duration(days: 1)));
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 60)),
+      selectableDayPredicate: (day) {
+        // Bloqueia fins de semana e datas já agendadas
+        if (day.weekday == DateTime.saturday || day.weekday == DateTime.sunday) return false;
+        return !_ausencias.any((a) =>
+            a.year == day.year && a.month == day.month && a.day == day.day);
+      },
+    );
+    if (picked != null) await _addDate(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.55,
+      maxChildSize: 0.9,
+      minChildSize: 0.4,
+      expand: false,
+      builder: (_, controller) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                    color: AppColors.textDisabled,
+                    borderRadius: BorderRadius.circular(4)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(Icons.event_busy_outlined,
+                    color: AppColors.primaryDark, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Ausências de ${widget.alunoNome.split(' ').first}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const Text(
+                        'O motorista será avisado automaticamente.',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _pickDate,
+                icon: const Icon(Icons.add),
+                label: const Text('Adicionar data'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryDark,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_loading)
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else if (_error != null)
+              Expanded(child: Center(child: Text(_error!, style: const TextStyle(color: AppColors.error))))
+            else if (_ausencias.isEmpty)
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.event_available_outlined,
+                          size: 48, color: AppColors.textDisabled),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Nenhuma ausência agendada',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.separated(
+                  controller: controller,
+                  itemCount: _ausencias.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final d = _ausencias[i];
+                    final label = DateFormat("EEEE, d 'de' MMMM", 'pt_BR').format(d);
+                    final isToday = d.year == DateTime.now().year &&
+                        d.month == DateTime.now().month &&
+                        d.day == DateTime.now().day;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Container(
+                        width: 40, height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryLight.withAlpha(60),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text('${d.day}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: AppColors.primaryDark)),
+                            Text(
+                              DateFormat('MMM', 'pt_BR').format(d).toUpperCase(),
+                              style: const TextStyle(
+                                  fontSize: 9, color: AppColors.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      title: Text(
+                        label,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      subtitle: isToday
+                          ? const Text('Hoje',
+                              style: TextStyle(
+                                  fontSize: 11, color: AppColors.warning))
+                          : null,
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close,
+                            size: 18, color: AppColors.textSecondary),
+                        tooltip: 'Cancelar ausência',
+                        onPressed: () => _removeDate(d),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

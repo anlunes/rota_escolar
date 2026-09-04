@@ -60,6 +60,7 @@ class ApiConstants {
   static const String locationEscolasCreate = '/api/location/escolas_create.php';
 
   static const String guardianProfile      = '/api/guardian/profile.php';
+  static const String guardianAbsences    = '/api/guardian/absences.php';
 
   static const String driverBairros       = '/api/drivers/bairros.php';
   static const String driverEscolas       = '/api/drivers/escolas.php';

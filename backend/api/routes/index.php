@@ -49,7 +49,11 @@ try {
             ) AS address,
             COALESCE(e.nome, 'Sem escola') AS school,
             COALESCE(rda.status_atual, 'waiting_van') AS status_atual,
-            CAST(COALESCE(rda.vai_hoje, 1) AS SIGNED) AS vai_hoje,
+            CAST(
+                CASE WHEN aa.id IS NOT NULL THEN 0
+                     ELSE COALESCE(rda.vai_hoje, 1)
+                END
+            AS SIGNED) AS vai_hoje,
             CAST(COALESCE(rda.talk_requested, 0) AS SIGNED) AS talk_requested,
             COALESCE(r.nome, '') AS guardian_name,
             COALESCE(r.whatsapp, r.telefone, '') AS guardian_whatsapp,
@@ -62,10 +66,11 @@ try {
         LEFT JOIN responsaveis r ON r.responsavel_id = a.responsavel_id
         LEFT JOIN rota_dias rd ON rd.motorista_id = ? AND rd.data_servico = ?
         LEFT JOIN rota_dia_alunos rda ON rda.aluno_id = a.aluno_id AND rda.rota_dia_id = rd.id
+        LEFT JOIN ausencias_agendadas aa ON aa.aluno_id = a.aluno_id AND aa.data = ?
         WHERE a.motorista_id = ? AND a.ativo = 1
         ORDER BY rda.ordem ASC, a.nome ASC
     ");
-    $stmt->execute([$motorista['motorista_id'], $date, $motorista['motorista_id']]);
+    $stmt->execute([$motorista['motorista_id'], $date, $date, $motorista['motorista_id']]);
     $rows = $stmt->fetchAll();
 
     // Cast int fields
