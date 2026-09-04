@@ -1737,18 +1737,37 @@ class _DriverProfileSheet extends StatelessWidget {
                               fontSize: 20, fontWeight: FontWeight.bold)),
                       Text('VanCode: ${driver.vanCode}',
                           style: const TextStyle(color: AppColors.textSecondary)),
-                      Row(
-                        children: [
-                          const Icon(Icons.star, size: 16, color: AppColors.primary),
-                          const SizedBox(width: 4),
-                          Text(
-                            driver.rating > 0
-                                ? '${driver.rating.toStringAsFixed(2)} (${driver.ratingTotal} avaliações)'
-                                : 'Sem avaliações',
-                            style: const TextStyle(
-                                fontSize: 13, color: AppColors.textSecondary),
-                          ),
-                        ],
+                      GestureDetector(
+                        onTap: () {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            shape: const RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.vertical(top: Radius.circular(20)),
+                            ),
+                            builder: (_) => _DriverReviewsSheet(
+                              motoristaId: driver.id,
+                              driverName: driver.name,
+                            ),
+                          );
+                        },
+                        child: Row(
+                          children: [
+                            const Icon(Icons.star, size: 16, color: AppColors.primary),
+                            const SizedBox(width: 4),
+                            Text(
+                              driver.rating > 0
+                                  ? '${driver.rating.toStringAsFixed(2)} · ${driver.ratingTotal} avaliação(ões)'
+                                  : 'Sem avaliações',
+                              style: const TextStyle(
+                                  fontSize: 13, color: AppColors.textSecondary),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.chevron_right,
+                                size: 16, color: AppColors.textSecondary),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -1809,6 +1828,38 @@ class _DriverProfileSheet extends StatelessWidget {
             _DocRow(icon: Icons.account_balance,    label: 'Alvará / Autorização',   ok: driver.docAutorizacao,   optional: true),
             const SizedBox(height: 24),
 
+            // Botão avaliações
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.vertical(top: Radius.circular(20)),
+                    ),
+                    builder: (_) => _DriverReviewsSheet(
+                      motoristaId: driver.id,
+                      driverName: driver.name,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.star_outline),
+                label: Text(
+                  driver.ratingTotal > 0
+                      ? 'Ver avaliações (${driver.ratingTotal})'
+                      : 'Ver avaliações',
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primaryDark,
+                  side: const BorderSide(color: AppColors.primaryDark),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
             // Botão WhatsApp
             SizedBox(
               width: double.infinity,
@@ -1849,6 +1900,270 @@ class _DriverProfileSheet extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Driver Reviews Sheet — avaliações anônimas do motorista
+// ---------------------------------------------------------------------------
+
+class _DriverReviewsSheet extends StatefulWidget {
+  final int motoristaId;
+  final String driverName;
+
+  const _DriverReviewsSheet({
+    required this.motoristaId,
+    required this.driverName,
+  });
+
+  @override
+  State<_DriverReviewsSheet> createState() => _DriverReviewsSheetState();
+}
+
+class _DriverReviewsSheetState extends State<_DriverReviewsSheet> {
+  bool _loading = true;
+  String? _error;
+  double? _media;
+  int _total = 0;
+  List<Map<String, dynamic>> _avaliacoes = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+      final res = await Dio().get(
+        '${ApiConstants.baseUrl}${ApiConstants.evaluationsIndex}',
+        queryParameters: {'motorista_id': widget.motoristaId},
+        options: Options(
+          headers: token != null ? {'Authorization': 'Bearer $token'} : {},
+        ),
+      );
+      if (res.data is Map && res.data['success'] == true) {
+        final raw = res.data['data'];
+        List<Map<String, dynamic>> list;
+        double? media;
+        int total;
+
+        if (raw is Map) {
+          // Formato novo: { media, total, avaliacoes: [...] }
+          media = raw['media'] != null
+              ? double.tryParse(raw['media'].toString())
+              : null;
+          total = int.tryParse(raw['total']?.toString() ?? '0') ?? 0;
+          list  = List<Map<String, dynamic>>.from(raw['avaliacoes'] ?? []);
+        } else {
+          // Formato antigo: lista plana
+          list  = List<Map<String, dynamic>>.from(raw ?? []);
+          total = list.length;
+          if (total > 0) {
+            final sum = list.fold<double>(0, (acc, e) =>
+                acc + (double.tryParse(e['nota']?.toString() ?? '0') ?? 0));
+            media = sum / total;
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _media = media;
+            _total = total;
+            _avaliacoes = list;
+            _loading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() { _error = 'Erro ao carregar avaliações.'; _loading = false; });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  String _mesLabel(String mes) {
+    const nomes = ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+                       'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    final parts = mes.split('-');
+    if (parts.length != 2) return mes;
+    final m = int.tryParse(parts[1]) ?? 0;
+    if (m < 1 || m > 12) return mes;
+    return '${nomes[m]}/${parts[0]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      maxChildSize: 0.95,
+      minChildSize: 0.4,
+      expand: false,
+      builder: (_, controller) => Column(
+        children: [
+          // Handle + header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+            child: Column(
+              children: [
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.textDisabled,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Icon(Icons.star, color: AppColors.primary, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Avaliações — ${widget.driverName}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // Conteúdo
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(_error!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  color: AppColors.textSecondary)),
+                        ),
+                      )
+                    : _total == 0
+                        ? const Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.star_border,
+                                    size: 48, color: AppColors.textDisabled),
+                                SizedBox(height: 12),
+                                Text('Ainda sem avaliações',
+                                    style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 15)),
+                              ],
+                            ),
+                          )
+                        : ListView(
+                            controller: controller,
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              // Resumo
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withAlpha(25),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(Icons.star,
+                                        color: AppColors.primary, size: 28),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _media != null
+                                          ? _media!.toStringAsFixed(2)
+                                          : '—',
+                                      style: const TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      'de 5.00\n$_total avaliação(ões)',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              // Lista
+                              ..._avaliacoes.map((av) {
+                                final nota = double.tryParse(av['nota']?.toString() ?? '0') ?? 0;
+                                final comentario = av['comentario']?.toString().trim() ?? '';
+                                final mes = av['mes_referencia']?.toString() ?? '';
+                                final stars = nota.round().clamp(1, 5);
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(14),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Row(
+                                              children: List.generate(5, (i) => Icon(
+                                                i < stars
+                                                    ? Icons.star
+                                                    : Icons.star_border,
+                                                size: 16,
+                                                color: AppColors.primary,
+                                              )),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              nota.toStringAsFixed(2),
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13),
+                                            ),
+                                            const Spacer(),
+                                            Text(
+                                              _mesLabel(mes),
+                                              style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppColors.textSecondary),
+                                            ),
+                                          ],
+                                        ),
+                                        if (comentario.isNotEmpty) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            '"$comentario"',
+                                            style: const TextStyle(
+                                                fontSize: 13,
+                                                fontStyle: FontStyle.italic,
+                                                color: AppColors.textSecondary),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ],
+                          ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 class _DocRow extends StatelessWidget {
   final IconData icon;
