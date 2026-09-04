@@ -112,7 +112,7 @@ try {
     $rtdbDebug   = [];
     $authMethod  = 'none';
 
-    if (in_array($tipo, ['rtdb', 'ambos']) && !empty($alunoIds)) {
+    if (in_array($tipo, ['mysql', 'rtdb', 'ambos']) && !empty($alunoIds)) {
         $dbUrl = 'https://rota-escolar-6085e-default-rtdb.firebaseio.com';
         $tsMs  = (int)(microtime(true) * 1000);
 
@@ -132,6 +132,8 @@ try {
             'currentStatus' => 'waiting_van',
             'motoristaUid'  => null,
             'ts'            => $tsMs,
+            'vai_hoje'      => true,
+            'vai_hoje_ts'   => $tsMs,
         ]);
 
         foreach ($alunoIds as $alunoId) {

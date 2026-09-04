@@ -35,6 +35,7 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
   final Ref _ref;
   final StudentsRepository _studentsRepository;
   final Map<String, StreamSubscription<({StudentStatus status, String lastUpdate})?>> _statusSubs = {};
+  final Map<String, StreamSubscription<({bool acknowledged, String? ackedAt})?>> _talkAckSubs = {};
 
   GuardianHomeNotifier(this._ref, this._studentsRepository)
       : super(const GuardianHomeState(students: [])) {
@@ -43,9 +44,8 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
 
   @override
   void dispose() {
-    for (final sub in _statusSubs.values) {
-      sub.cancel();
-    }
+    for (final sub in _statusSubs.values) sub.cancel();
+    for (final sub in _talkAckSubs.values) sub.cancel();
     super.dispose();
   }
 
@@ -55,6 +55,7 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
       final students = await _studentsRepository.fetchStudents();
       state = state.copyWith(students: students, isLoading: false);
       _subscribeToRtdbStatus(students);
+      _subscribeToTalkAck(students);
     } catch (e) {
       debugPrint('[GuardianHomeNotifier] loadStudents error: $e');
       state = state.copyWith(isLoading: false);
@@ -96,25 +97,84 @@ class GuardianHomeNotifier extends StateNotifier<GuardianHomeState> {
     }
   }
 
+  /// Subscreve ao RTDB para saber quando o motorista confirma leitura.
+  void _subscribeToTalkAck(List<StudentSummary> students) {
+    for (final sub in _talkAckSubs.values) sub.cancel();
+    _talkAckSubs.clear();
+
+    for (final student in students) {
+      if (!student.ativo || student.driverName.isEmpty || student.driverName == 'Sem motorista') continue;
+
+      _talkAckSubs[student.id] = RtdbService.instance
+          .watchTalkAcknowledged(student.id)
+          .listen((payload) {
+        if (!mounted || payload == null) return;
+        state = state.copyWith(
+          students: state.students.map((s) {
+            if (s.id == student.id) {
+              return s.copyWith(
+                talkAcknowledgedByDriver: payload.acknowledged,
+                talkAcknowledgedAt: payload.acknowledged ? payload.ackedAt : null,
+              );
+            }
+            return s;
+          }).toList(),
+        );
+      }, onError: (e) {
+        debugPrint('[GuardianHomeNotifier] RTDB watchTalkAcknowledged error (${student.id}): $e');
+      });
+    }
+  }
+
   void toggleGoToday(String studentId) {
+    final student = state.students.firstWhere((s) => s.id == studentId);
+    final newGoToday = !student.goToday;
+
+    // Otimista: atualiza UI imediatamente
     final updated = state.students.map<StudentSummary>((s) {
-      if (s.id == studentId) return s.copyWith(goToday: !s.goToday);
+      if (s.id == studentId) return s.copyWith(goToday: newGoToday);
       return s;
     }).toList();
     state = state.copyWith(students: updated);
+
+    // Persiste no RTDB (tempo real para o motorista)
+    RtdbService.instance.writeGoToday(studentId, newGoToday).catchError((e) {
+      debugPrint('[GuardianHomeNotifier] RTDB writeGoToday error: $e');
+      return null;
+    });
+
+    // Persiste no MySQL
+    _studentsRepository.toggleGoToday(studentId, newGoToday).catchError((e) {
+      debugPrint('[GuardianHomeNotifier] toggleGoToday API error: $e');
+    });
   }
 
   void toggleTalkRequest(String studentId) {
+    final student = state.students.firstWhere((s) => s.id == studentId);
+    final newRequested = !student.talkRequested;
+
+    // Otimista
     final updated = state.students.map<StudentSummary>((s) {
       if (s.id == studentId) {
         return s.copyWith(
-          talkRequested: !s.talkRequested,
+          talkRequested: newRequested,
           talkAcknowledgedByDriver: false,
         );
       }
       return s;
     }).toList();
     state = state.copyWith(students: updated);
+
+    // RTDB — tempo real para o motorista
+    RtdbService.instance.writeTalkRequest(studentId, newRequested).catchError((e) {
+      debugPrint('[GuardianHomeNotifier] RTDB writeTalkRequest error: $e');
+      return null;
+    });
+
+    // MySQL
+    _studentsRepository.toggleTalkRequest(studentId, newRequested).catchError((e) {
+      debugPrint('[GuardianHomeNotifier] toggleTalkRequest API error: $e');
+    });
   }
 
   void simulateDriverAcknowledge(String studentId) {

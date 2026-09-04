@@ -25,8 +25,10 @@ class ApiConstants {
   static const String authVerifyResetCode   = '/api/auth/verify_reset_code.php';
   static const String authSendVerification  = '/api/auth/send_verification.php';
 
-  static const String studentsIndex = '/api/students/index.php';
-  static const String studentsUpdate = '/api/students/update.php';
+  static const String studentsIndex   = '/api/students/index.php';
+  static const String studentsUpdate  = '/api/students/update.php';
+  static const String studentsGoToday    = '/api/students/go_today.php';
+  static const String studentsTalkRequest = '/api/students/talk_request.php';
 
   static const String schoolsIndex = '/api/schools/index.php';
   static const String schoolsCreate = '/api/schools/create.php';
@@ -45,8 +47,9 @@ class ApiConstants {
 
   static const String evaluationsCreate = '/api/evaluations/create.php';
   static const String evaluationsIndex = '/api/evaluations/index.php';
+  static const String evaluationsStatus = '/api/evaluations/status.php';
 
-  static const String uploadFotoCnh = '/api/upload/foto_cnh.php';
+  static const String uploadFoto     = '/api/upload/foto.php';
   static const String uploadFotoCrlv = '/api/upload/foto_crlv.php';
 
   static const String locationEstados = '/api/location/estados.php';
@@ -55,6 +58,8 @@ class ApiConstants {
   static const String locationBairrosCreate = '/api/location/bairros_create.php';
   static const String locationEscolas = '/api/location/escolas.php';
   static const String locationEscolasCreate = '/api/location/escolas_create.php';
+
+  static const String guardianProfile      = '/api/guardian/profile.php';
 
   static const String driverBairros       = '/api/drivers/bairros.php';
   static const String driverEscolas       = '/api/drivers/escolas.php';

@@ -93,12 +93,12 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
     final talkCount = driverState.talkRequestCount;
     final user = ref.watch(authNotifierProvider).user;
 
-    const tabs = [
-      DriverProfileTab(),
-      DriverRouteTab(),
-      DriverFinancialTab(),
-      DriverMessagesTab(),
-      DriverOpportunitiesTab(),
+    final tabs = [
+      const DriverProfileTab(),
+      DriverRouteTab(onGoToMessages: () => setState(() => _currentTab = 3)),
+      const DriverFinancialTab(),
+      const DriverMessagesTab(),
+      const DriverOpportunitiesTab(),
     ];
 
     return Scaffold(

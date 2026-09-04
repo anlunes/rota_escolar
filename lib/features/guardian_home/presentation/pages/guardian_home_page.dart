@@ -12,8 +12,11 @@ import '../../application/guardian_home_provider.dart';
 import '../../domain/models/student_summary.dart';
 import '../../domain/models/route_report_entry.dart';
 import '../../data/students_repository.dart';
+import '../../../../features/evaluation/data/evaluation_repository.dart';
 import '../../../../features/evaluation/presentation/widgets/monthly_evaluation_modal.dart';
+import '../../../../features/onboarding/data/onboarding_repository.dart';
 import '../../../../features/auth/application/auth_state_provider.dart';
+import '../../../../app/router/app_router.dart';
 import '../../../../app/core/constants/status_constants.dart';
 import '../../../../app/core/widgets/status_chip.dart';
 import '../../../../app/theme/app_colors.dart';
@@ -105,16 +108,44 @@ class _GuardianHomePageState extends ConsumerState<GuardianHomePage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       final role = ref.read(authNotifierProvider).role;
-      if (role == UserRole.guardian && shouldShowMonthlyEvaluation()) {
+      if (role == UserRole.guardian) {
+        await _checkOnboarding();
+        if (!mounted) return;
+        await _checkMonthlyEvaluation();
+      }
+    });
+  }
+
+  Future<void> _checkOnboarding() async {
+    try {
+      final profile = await ref.read(onboardingRepositoryProvider).getProfile();
+      if (!profile.onboardingComplete && mounted) {
+        context.go(AppRoutes.onboarding);
+      }
+    } catch (_) {
+      // Erro de rede: não bloqueia o usuário, tenta de novo na próxima abertura
+    }
+  }
+
+  Future<void> _checkMonthlyEvaluation() async {
+    try {
+      final status = await ref.read(evaluationRepositoryProvider).checkStatus();
+      if (status.needsEvaluation && status.motoristaId != null && mounted) {
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (_) => const MonthlyEvaluationModal(),
+          builder: (_) => MonthlyEvaluationModal(
+            motoristaId: status.motoristaId!,
+            mes: status.mes,
+          ),
         );
       }
-    });
+    } catch (_) {
+      // Erro de rede: não mostra o modal, tenta de novo na próxima abertura
+    }
   }
 
   void _logout() {
@@ -179,7 +210,24 @@ class _GuardianHomePageState extends ConsumerState<GuardianHomePage> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentTab,
-        onTap: (i) => setState(() => _currentTab = i),
+        onTap: (i) {
+          // Bloqueia aba Motoristas se não há filhos cadastrados
+          if (i == 3) {
+            final students = ref.read(guardianHomeProvider).students;
+            final hasActive = students.any((s) => s.ativo);
+            if (!hasActive) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Cadastre um filho primeiro para ver os motoristas disponíveis.'),
+                  behavior: SnackBarBehavior.floating,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+              return;
+            }
+          }
+          setState(() => _currentTab = i);
+        },
         backgroundColor: Colors.white,
         selectedItemColor: AppColors.primaryDark,
         unselectedItemColor: AppColors.textSecondary,
@@ -486,7 +534,7 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
         'arquivo': MultipartFile.fromBytes(bytes, filename: 'foto_aluno.jpg'),
       });
       final response = await dio.post(
-        '${ApiConstants.baseUrl}${ApiConstants.uploadFotoCnh}',
+        '${ApiConstants.baseUrl}${ApiConstants.uploadFoto}',
         data: formData,
         options: Options(headers: token != null ? {'Authorization': 'Bearer $token'} : {}),
       );
@@ -544,7 +592,8 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
       },
     );
     Navigator.pop(context);
-    if (van.isNotEmpty) {
+    final vanAnterior = widget.existing?.vanCode ?? '';
+    if (van.isNotEmpty && vanAnterior.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Solicitação enviada ao motorista!'),
@@ -1133,12 +1182,18 @@ class _StudentCard extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: _ActionToggle(
-                        label: student.talkRequested
-                            ? 'Solicitado'
-                            : 'Quero falar',
-                        icon: Icons.chat_bubble_outline,
-                        active: student.talkRequested,
-                        activeColor: AppColors.warning,
+                        label: student.talkAcknowledgedByDriver
+                            ? 'Motorista ciente'
+                            : student.talkRequested
+                                ? 'Solicitado'
+                                : 'Quero falar',
+                        icon: student.talkAcknowledgedByDriver
+                            ? Icons.done_all
+                            : Icons.chat_bubble_outline,
+                        active: student.talkRequested || student.talkAcknowledgedByDriver,
+                        activeColor: student.talkAcknowledgedByDriver
+                            ? AppColors.success
+                            : AppColors.warning,
                         inactiveColor: AppColors.textSecondary,
                         onTap: () => _showTalkSheet(
                           context,
@@ -1679,7 +1734,7 @@ class _DriverCard extends StatelessWidget {
                         const Icon(Icons.star, size: 14, color: AppColors.primary),
                         Text(
                           driver.rating > 0
-                              ? driver.rating.toStringAsFixed(1)
+                              ? driver.rating.toStringAsFixed(2)
                               : 'Novo',
                           style: const TextStyle(
                               fontSize: 12, fontWeight: FontWeight.w600),
@@ -1840,7 +1895,7 @@ class _DriverProfileSheet extends StatelessWidget {
                           const SizedBox(width: 4),
                           Text(
                             driver.rating > 0
-                                ? '${driver.rating.toStringAsFixed(1)} (${driver.ratingTotal} avaliações)'
+                                ? '${driver.rating.toStringAsFixed(2)} (${driver.ratingTotal} avaliações)'
                                 : 'Sem avaliações',
                             style: const TextStyle(
                                 fontSize: 13, color: AppColors.textSecondary),
@@ -2063,24 +2118,31 @@ class _CommunicationTab extends ConsumerWidget {
                             style: const TextStyle(
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: acked
-                                    ? AppColors.success.withAlpha(30)
-                                    : AppColors.warning.withAlpha(30),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: acked
-                                      ? AppColors.success
-                                      : AppColors.warning,
-                                ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: acked
+                                ? AppColors.success.withAlpha(30)
+                                : AppColors.warning.withAlpha(30),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: acked
+                                  ? AppColors.success
+                                  : AppColors.warning,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                acked ? Icons.done_all : Icons.schedule,
+                                size: 12,
+                                color: acked ? AppColors.success : AppColors.warning,
                               ),
-                              child: Text(
-                                acked ? 'Motorista ciente' : 'Solicitado',
+                              const SizedBox(width: 4),
+                              Text(
+                                acked ? 'Motorista ciente' : 'Aguardando motorista',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -2089,20 +2151,28 @@ class _CommunicationTab extends ConsumerWidget {
                                       : AppColors.warning,
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
+                        if (acked && s.talkAcknowledgedAt != null) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.access_time,
+                                  size: 11, color: AppColors.textSecondary),
+                              const SizedBox(width: 3),
+                              Text(
+                                s.talkAcknowledgedAt!,
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                  if (!acked)
-                    TextButton(
-                      onPressed: () =>
-                          notifier.simulateDriverAcknowledge(s.id),
-                      child: const Text('Simular\nciente',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 11)),
-                    ),
                 ],
               ),
             ),

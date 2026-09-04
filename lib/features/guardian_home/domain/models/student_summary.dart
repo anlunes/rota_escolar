@@ -13,6 +13,7 @@ class StudentSummary {
   final bool goToday;
   final bool talkRequested;
   final bool talkAcknowledgedByDriver;
+  final String? talkAcknowledgedAt; // ex: "Qua 03/09 • 22:30"
   final String? photoUrl;
   final String driverName;
   final String driverWhatsapp;
@@ -37,6 +38,7 @@ class StudentSummary {
     required this.goToday,
     required this.talkRequested,
     required this.talkAcknowledgedByDriver,
+    this.talkAcknowledgedAt,
     this.photoUrl,
     required this.driverName,
     required this.driverWhatsapp,
@@ -65,6 +67,7 @@ class StudentSummary {
     bool? goToday,
     bool? talkRequested,
     bool? talkAcknowledgedByDriver,
+    Object? talkAcknowledgedAt = _keep,
     String? photoUrl,
     String? driverName,
     String? driverWhatsapp,
@@ -90,6 +93,9 @@ class StudentSummary {
       talkRequested: talkRequested ?? this.talkRequested,
       talkAcknowledgedByDriver:
           talkAcknowledgedByDriver ?? this.talkAcknowledgedByDriver,
+      talkAcknowledgedAt: talkAcknowledgedAt == _keep
+          ? this.talkAcknowledgedAt
+          : talkAcknowledgedAt as String?,
       photoUrl: photoUrl ?? this.photoUrl,
       driverName: driverName ?? this.driverName,
       driverWhatsapp: driverWhatsapp ?? this.driverWhatsapp,

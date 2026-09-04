@@ -55,7 +55,8 @@ try {
             COALESCE(r.whatsapp, r.telefone, '') AS guardian_whatsapp,
             0 AS payment_paid,
             COALESCE(rda.ordem, 999) AS ordem,
-            COALESCE(a.turno, '') AS turno
+            COALESCE(a.turno, '') AS turno,
+            COALESCE(a.foto_url, '') AS foto_url
         FROM alunos a
         LEFT JOIN escolas e ON e.escola_id = a.escola_id
         LEFT JOIN responsaveis r ON r.responsavel_id = a.responsavel_id

@@ -48,6 +48,117 @@ class RtdbService {
     });
   }
 
+  /// Responsável grava talk_requested no RTDB.
+  Future<void> writeTalkRequest(String alunoId, bool requested) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await _studentRef(alunoId).update({
+      'talk_requested':    requested,
+      'talk_ts':           ServerValue.timestamp,
+      'talk_acknowledged': false, // reset ao fazer nova solicitação
+    });
+  }
+
+  /// Motorista grava talk_acknowledged no RTDB.
+  Future<void> writeTalkAcknowledged(String alunoId) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await _studentRef(alunoId).update({
+      'talk_acknowledged': true,
+      'talk_ack_ts':       ServerValue.timestamp,
+    });
+  }
+
+  /// Stream de talk_requested — usado pelo motorista.
+  /// Retorna ({requested, acknowledged}) para que o driver possa
+  /// refletir o ack do RTDB sem sobrescrever o estado local incorretamente.
+  /// Emite null se não houver dado de hoje ou anterior ao [afterMs].
+  Stream<({bool requested, bool acknowledged})?> watchTalkRequest(
+      String alunoId, {int? afterMs}) {
+    return _studentRef(alunoId).onValue.map((event) {
+      final data = event.snapshot.value;
+      if (data == null) return null;
+      final map = Map<String, dynamic>.from(data as Map);
+
+      final ts = map['talk_ts'];
+      if (ts is! int) return null;
+
+      final recorded = DateTime.fromMillisecondsSinceEpoch(ts);
+      final today    = DateTime.now();
+      if (recorded.year != today.year ||
+          recorded.month != today.month ||
+          recorded.day   != today.day) return null;
+
+      if (afterMs != null && ts <= afterMs) return null;
+
+      final requested = map['talk_requested'] as bool? ?? false;
+      final acked     = map['talk_acknowledged'] as bool? ?? false;
+      return (requested: requested, acknowledged: acked);
+    });
+  }
+
+  /// Stream de talk_acknowledged — usado pelo responsável.
+  Stream<({bool acknowledged, String? ackedAt})?> watchTalkAcknowledged(String alunoId) {
+    return _studentRef(alunoId).onValue.map((event) {
+      final data = event.snapshot.value;
+      if (data == null) return null;
+      final map = Map<String, dynamic>.from(data as Map);
+
+      final ts = map['talk_ack_ts'];
+      if (ts is! int) return null;
+
+      final recorded = DateTime.fromMillisecondsSinceEpoch(ts);
+      final today    = DateTime.now();
+      if (recorded.year != today.year ||
+          recorded.month != today.month ||
+          recorded.day   != today.day) return null;
+
+      final acked  = map['talk_acknowledged'] as bool? ?? false;
+      final ackedAt = acked ? _formatUpdate(recorded) : null;
+      return (acknowledged: acked, ackedAt: ackedAt);
+    });
+  }
+
+  /// Responsável grava o vai_hoje do aluno no RTDB.
+  Future<void> writeGoToday(String alunoId, bool goToday) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await _studentRef(alunoId).update({
+      'vai_hoje':    goToday,
+      'vai_hoje_ts': ServerValue.timestamp,
+    });
+  }
+
+  /// Stream do vai_hoje do aluno — usado pelo motorista para atualização em tempo real.
+  /// Emite null se não houver dado de hoje ou se o dado for anterior a [afterMs].
+  /// [afterMs]: timestamp em ms do último refresh do motorista — ignora dados antigos.
+  Stream<bool?> watchGoToday(String alunoId, {int? afterMs}) {
+    return _studentRef(alunoId).onValue.map((event) {
+      final data = event.snapshot.value;
+      if (data == null) return null;
+
+      final map = Map<String, dynamic>.from(data as Map);
+
+      final ts = map['vai_hoje_ts'];
+      if (ts is! int) return null;
+
+      // Ignora dados de dias anteriores
+      final recorded = DateTime.fromMillisecondsSinceEpoch(ts);
+      final today    = DateTime.now();
+      final sameDay  = recorded.year  == today.year &&
+                       recorded.month == today.month &&
+                       recorded.day   == today.day;
+      if (!sameDay) return null;
+
+      // Ignora dados anteriores ao último refresh do motorista
+      if (afterMs != null && ts <= afterMs) return null;
+
+      final raw = map['vai_hoje'];
+      if (raw == null) return null;
+      return raw as bool;
+    });
+  }
+
   /// Stream do status do aluno — usado pelo responsável para atualização em tempo real.
   /// Emite null se não houver dado ou se o dado for de um dia anterior.
   /// Retorna ({status, lastUpdate}) onde lastUpdate é a hora real do movimento (HH:mm).

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/driver_repository.dart';
@@ -107,6 +109,15 @@ class DriverHomeState {
 
 class DriverHomeNotifier extends StateNotifier<DriverHomeState> {
   final DriverRepository _repository;
+  final Map<String, StreamSubscription<bool?>> _goTodaySubs = {};
+  final Map<String, StreamSubscription<({bool requested, bool acknowledged})?>> _talkRequestSubs = {};
+
+  @override
+  void dispose() {
+    for (final sub in _goTodaySubs.values) sub.cancel();
+    for (final sub in _talkRequestSubs.values) sub.cancel();
+    super.dispose();
+  }
 
   DriverHomeNotifier(this._repository)
       : super(
@@ -128,12 +139,15 @@ class DriverHomeNotifier extends StateNotifier<DriverHomeState> {
         _repository.fetchPayments(),
         _repository.fetchOpportunities(),
       ]);
+      final students = results[0] as List<StudentInRoute>;
       state = state.copyWith(
-        students:      results[0] as List<StudentInRoute>,
+        students:      students,
         payments:      results[1] as List<PaymentRecord>,
         opportunities: results[2] as List<CandidateOpportunity>,
         isLoading: false,
       );
+      _subscribeToGoToday(students);
+      _subscribeToTalkRequest(students);
     } catch (e) {
       debugPrint('[DriverHomeNotifier] _loadInitialData error: $e');
       state = state.copyWith(isLoading: false);
@@ -141,6 +155,33 @@ class DriverHomeNotifier extends StateNotifier<DriverHomeState> {
   }
 
   Future<void> refresh() => _loadInitialData();
+
+  /// Subscreve ao RTDB para atualizações de vai_hoje em tempo real.
+  /// Usa [refreshMs] para ignorar dados gravados antes do último refresh.
+  void _subscribeToGoToday(List<StudentInRoute> students) {
+    for (final sub in _goTodaySubs.values) {
+      sub.cancel();
+    }
+    _goTodaySubs.clear();
+
+    final refreshMs = DateTime.now().millisecondsSinceEpoch;
+
+    for (final student in students) {
+      _goTodaySubs[student.id] = RtdbService.instance
+          .watchGoToday(student.id, afterMs: refreshMs)
+          .listen((goToday) {
+        if (!mounted || goToday == null) return;
+        state = state.copyWith(
+          students: state.students.map((s) {
+            if (s.id == student.id) return s.copyWith(goToday: goToday);
+            return s;
+          }).toList(),
+        );
+      }, onError: (e) {
+        debugPrint('[DriverHomeNotifier] RTDB watchGoToday error (${student.id}): $e');
+      });
+    }
+  }
 
   void setPeriod(RoutePeriod period) {
     state = state.copyWith(selectedPeriod: period);
@@ -206,12 +247,51 @@ class DriverHomeNotifier extends StateNotifier<DriverHomeState> {
     _repository.updateStudentStatus(studentId, newStatus).catchError((_) => false);
   }
 
+  /// Subscreve ao RTDB para atualizações de talk_requested em tempo real.
+  void _subscribeToTalkRequest(List<StudentInRoute> students) {
+    for (final sub in _talkRequestSubs.values) sub.cancel();
+    _talkRequestSubs.clear();
+
+    final refreshMs = DateTime.now().millisecondsSinceEpoch;
+
+    for (final student in students) {
+      _talkRequestSubs[student.id] = RtdbService.instance
+          .watchTalkRequest(student.id, afterMs: refreshMs)
+          .listen((payload) {
+        if (!mounted || payload == null) return;
+        state = state.copyWith(
+          students: state.students.map((s) {
+            if (s.id == student.id) {
+              return s.copyWith(
+                talkRequested:   payload.requested,
+                talkAcknowledged: payload.acknowledged,
+              );
+            }
+            return s;
+          }).toList(),
+        );
+      }, onError: (e) {
+        debugPrint('[DriverHomeNotifier] RTDB watchTalkRequest error (${student.id}): $e');
+      });
+    }
+  }
+
   void acknowledgeTalkRequest(String studentId) {
+    // Otimista
     final updated = state.students.map<StudentInRoute>((s) {
       if (s.id == studentId) return s.copyWith(talkAcknowledged: true);
       return s;
     }).toList();
     state = state.copyWith(students: updated);
+
+    // RTDB — responsável vê em tempo real
+    RtdbService.instance.writeTalkAcknowledged(studentId).catchError((e) {
+      debugPrint('[DriverHomeNotifier] RTDB writeTalkAcknowledged error: $e');
+      return null;
+    });
+
+    // MySQL
+    _repository.ackTalkRequest(studentId).catchError((_) => false);
   }
 
   void removeTalkRequest(String studentId) {

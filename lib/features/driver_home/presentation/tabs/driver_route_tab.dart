@@ -9,7 +9,8 @@ import '../../../../app/core/widgets/status_chip.dart';
 import '../../../../app/theme/app_colors.dart';
 
 class DriverRouteTab extends ConsumerWidget {
-  const DriverRouteTab({super.key});
+  final VoidCallback? onGoToMessages;
+  const DriverRouteTab({super.key, this.onGoToMessages});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -52,26 +53,30 @@ class DriverRouteTab extends ConsumerWidget {
 
         // Talk request alert banner
         if (state.talkRequestCount > 0)
-          Container(
-            width: double.infinity,
-            color: AppColors.warning.withAlpha(30),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Row(
-              children: [
-                const Icon(Icons.chat_bubble_outline,
-                    color: AppColors.warning, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '${state.talkRequestCount} responsável(is) quer(em) falar',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.warning,
-                      fontSize: 13,
+          GestureDetector(
+            onTap: onGoToMessages,
+            child: Container(
+              width: double.infinity,
+              color: AppColors.warning.withAlpha(30),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.chat_bubble_outline,
+                      color: AppColors.warning, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${state.talkRequestCount} responsável(is) quer(em) falar',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.warning,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  const Icon(Icons.chevron_right, color: AppColors.warning, size: 18),
+                ],
+              ),
             ),
           ),
 
@@ -221,151 +226,218 @@ class _StudentRouteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ringColor = student.paymentPaid ? AppColors.success : AppColors.error;
     final nameInitial = student.name.isNotEmpty ? student.name[0].toUpperCase() : '?';
+    final notGoingToday = !student.goToday;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 6),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Linha principal ──────────────────────────────────────
-            Row(
-              children: [
-                // Avatar com anel de pagamento
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: ringColor, width: 2),
-                  ),
-                  child: CircleAvatar(
-                    radius: 18,
-                    backgroundColor: AppColors.primaryLight,
-                    backgroundImage: student.photoUrl != null
-                        ? NetworkImage(student.photoUrl!)
-                        : null,
-                    child: student.photoUrl == null
-                        ? Text(nameInitial,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: AppColors.primaryDark))
-                        : null,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Nome
-                Expanded(
-                  child: Text(
-                    student.name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: student.goToday ? AppColors.text : AppColors.textDisabled,
+      color: notGoingToday ? AppColors.error.withAlpha(18) : null,
+      shape: notGoingToday
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: AppColors.error.withAlpha(120), width: 1.5),
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Banner "Não vai hoje" ────────────────────────────────
+          if (notGoingToday)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.error,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.cancel, size: 14, color: Colors.white),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      'NÃO VAI HOJE — responsável avisou',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 0.3,
+                      ),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                // Badge "Não vai hoje"
-                if (!student.goToday)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.error.withAlpha(20),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text('Não vai',
-                        style: TextStyle(
-                            fontSize: 10, color: AppColors.error, fontWeight: FontWeight.w600)),
-                  ),
-                // Talk request badge
-                if (student.talkRequested)
                   GestureDetector(
-                    onTap: onTalkAck,
+                    onTap: onRemoveFromRoute,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      margin: const EdgeInsets.only(left: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppColors.warning.withAlpha(30),
+                        color: Colors.white.withAlpha(40),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AppColors.warning),
+                        border: Border.all(color: Colors.white.withAlpha(100)),
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.chat, size: 12, color: AppColors.warning),
-                          SizedBox(width: 3),
-                          Text('Falar', style: TextStyle(fontSize: 10, color: AppColors.warning, fontWeight: FontWeight.w600)),
+                          Icon(Icons.remove_circle_outline, size: 13, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            'Remover da fila',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ),
-                // Remover
-                IconButton(
-                  onPressed: onRemoveFromRoute,
-                  icon: const Icon(Icons.remove_circle_outline, size: 16, color: AppColors.textDisabled),
-                  tooltip: 'Remover desta rota',
-                  style: IconButton.styleFrom(padding: const EdgeInsets.all(4)),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 4),
-
-            // ── Destino contextual ───────────────────────────────────
-            Row(
-              children: [
-                Icon(_destinationIcon, size: 13, color: AppColors.textSecondary),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    _destinationLabel,
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 6),
-
-            // ── Status + Ações ───────────────────────────────────────
-            Row(
-              children: [
-                StatusChip(status: student.status),
-                const Spacer(),
-                // WhatsApp
-                IconButton(
-                  onPressed: onWhatsApp,
-                  icon: SvgPicture.asset(
-                    'assets/icons/whatsapp.svg',
-                    width: 18,
-                    height: 18,
-                    colorFilter: const ColorFilter.mode(Color(0xFF25D366), BlendMode.srcIn),
-                  ),
-                  tooltip: 'WhatsApp ${student.guardianName}',
-                  style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFF25D366).withAlpha(20),
-                    padding: const EdgeInsets.all(5),
-                  ),
-                ),
-                if (student.goToday && _canAdvanceInPeriod) ...[
-                  const SizedBox(width: 4),
-                  ElevatedButton(
-                    onPressed: onStatusNext,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(_advanceLabel, style: const TextStyle(fontSize: 12)),
-                  ),
                 ],
+              ),
+            ),
+
+          // ── Conteúdo do card ─────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Linha principal
+                Row(
+                  children: [
+                    // Avatar com anel de pagamento
+                    Opacity(
+                      opacity: notGoingToday ? 0.45 : 1.0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: ringColor, width: 2),
+                        ),
+                        child: CircleAvatar(
+                          radius: 27,
+                          backgroundColor: AppColors.primaryLight,
+                          backgroundImage: student.photoUrl != null
+                              ? NetworkImage(student.photoUrl!)
+                              : null,
+                          child: student.photoUrl == null
+                              ? Text(nameInitial,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 20,
+                                      color: AppColors.primaryDark))
+                              : null,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Nome
+                    Expanded(
+                      child: Text(
+                        student.name,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: notGoingToday ? AppColors.textDisabled : AppColors.text,
+                          decoration: notGoingToday ? TextDecoration.lineThrough : null,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    // Talk request badge
+                    if (student.talkRequested)
+                      GestureDetector(
+                        onTap: onTalkAck,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          margin: const EdgeInsets.only(left: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withAlpha(30),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: AppColors.warning),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.chat, size: 12, color: AppColors.warning),
+                              SizedBox(width: 3),
+                              Text('Falar',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      color: AppColors.warning,
+                                      fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    // Remover
+                    IconButton(
+                      onPressed: onRemoveFromRoute,
+                      icon: const Icon(Icons.remove_circle_outline,
+                          size: 16, color: AppColors.textDisabled),
+                      tooltip: 'Remover desta rota',
+                      style: IconButton.styleFrom(padding: const EdgeInsets.all(4)),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 4),
+
+                // Destino contextual
+                Row(
+                  children: [
+                    Icon(_destinationIcon, size: 13, color: AppColors.textSecondary),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        _destinationLabel,
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 6),
+
+                // Status + Ações
+                Row(
+                  children: [
+                    StatusChip(status: student.status),
+                    const Spacer(),
+                    // WhatsApp
+                    IconButton(
+                      onPressed: onWhatsApp,
+                      icon: SvgPicture.asset(
+                        'assets/icons/whatsapp.svg',
+                        width: 18,
+                        height: 18,
+                        colorFilter: const ColorFilter.mode(
+                            Color(0xFF25D366), BlendMode.srcIn),
+                      ),
+                      tooltip: 'WhatsApp ${student.guardianName}',
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFF25D366).withAlpha(20),
+                        padding: const EdgeInsets.all(5),
+                      ),
+                    ),
+                    if (student.goToday && _canAdvanceInPeriod) ...[
+                      const SizedBox(width: 4),
+                      ElevatedButton(
+                        onPressed: onStatusNext,
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(_advanceLabel,
+                            style: const TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

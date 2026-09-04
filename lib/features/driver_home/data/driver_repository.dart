@@ -138,6 +138,24 @@ class DriverRepository {
     }
   }
 
+  /// Motorista confirma leitura da solicitação de conversa.
+  Future<bool> ackTalkRequest(String studentId) async {
+    try {
+      final response = await _api.post(
+        ApiConstants.studentsTalkRequest,
+        data: {
+          'id':     int.tryParse(studentId) ?? 0,
+          'action': 'ack',
+        },
+      );
+      final data = response.data;
+      return data is Map && data['success'] == true;
+    } catch (e) {
+      debugPrint('[DriverRepository] ackTalkRequest error: $e');
+      return false;
+    }
+  }
+
   /// Marca mensalidade como paga em dinheiro.
   Future<bool> markPayment(String financialId) async {
     try {
@@ -200,6 +218,10 @@ class DriverRepository {
           int.tryParse(json['payment_paid'].toString()) == 1,
 
       activeRoutes: activeRoutes,
+
+      photoUrl: (json['foto_url']?.toString() ?? '').isNotEmpty
+          ? json['foto_url'].toString()
+          : null,
     );
   }
 

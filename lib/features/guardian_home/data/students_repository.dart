@@ -154,6 +154,28 @@ class StudentsRepository {
       bairro:        json['bairro_residencia']?.toString() ?? '',
       turno:         json['turno']?.toString()             ?? '',
       dataNascimento: json['data_nascimento']?.toString()  ?? '',
+      photoUrl:      (json['foto_url']?.toString() ?? '').isNotEmpty
+                         ? json['foto_url'].toString()
+                         : null,
+    );
+  }
+
+  /// Persiste talk_requested no banco.
+  Future<void> toggleTalkRequest(String id, bool requested) async {
+    await _api.post(
+      ApiConstants.studentsTalkRequest,
+      data: {
+        'id':     int.tryParse(id) ?? 0,
+        'action': requested ? 'request' : 'cancel',
+      },
+    );
+  }
+
+  /// Persiste vai_hoje no banco (atualiza último rota_dia_alunos).
+  Future<void> toggleGoToday(String id, bool goToday) async {
+    await _api.post(
+      ApiConstants.studentsGoToday,
+      data: {'id': int.tryParse(id) ?? 0, 'vai_hoje': goToday ? 1 : 0},
     );
   }
 
