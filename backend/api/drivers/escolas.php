@@ -56,11 +56,13 @@ try {
     $motoristaId = $motorista['motorista_id'];
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        // Escolas derivadas dos alunos ativos do motorista (fonte de verdade)
         $stmt = $pdo->prepare("
-            SELECT e.escola_id AS id, e.nome, e.bairro_id, e.bairro_nome
-            FROM escolas_atendidas ea
-            JOIN escolas e ON e.escola_id = ea.escola_id
-            WHERE ea.motorista_id = ?
+            SELECT DISTINCT e.escola_id AS id, e.nome,
+                   COALESCE(e.bairro, '') AS bairro
+            FROM alunos a
+            JOIN escolas e ON e.escola_id = a.escola_id
+            WHERE a.motorista_id = ? AND a.ativo = 1 AND a.escola_id IS NOT NULL
             ORDER BY e.nome
         ");
         $stmt->execute([$motoristaId]);
