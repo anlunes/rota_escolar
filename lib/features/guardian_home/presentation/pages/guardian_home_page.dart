@@ -204,7 +204,7 @@ class _GuardianHomePageState extends ConsumerState<GuardianHomePage> {
           const _VideosTab(),
           const _MapTab(),
           const _DriversTab(),
-          const _CommunicationTab(),
+          _CommunicationTab(onWhatsApp: _openWhatsApp),
           const _RouteReportTab(),
         ],
       ),
@@ -328,8 +328,6 @@ class _StudentTab extends ConsumerWidget {
           ...state.students.map<Widget>(
             (student) => _StudentCard(
               student: student,
-              onToggleGoToday: () => notifier.toggleGoToday(student.id),
-              onToggleTalk: () => notifier.toggleTalkRequest(student.id),
               onWhatsApp: () =>
                   onWhatsApp(student.driverWhatsapp, student.driverName),
               onReactivate: () => notifier.reactivateStudent(student.id),
@@ -953,16 +951,12 @@ class _SectionLabel extends StatelessWidget {
 
 class _StudentCard extends StatelessWidget {
   final StudentSummary student;
-  final VoidCallback onToggleGoToday;
-  final VoidCallback onToggleTalk;
   final VoidCallback onWhatsApp;
   final VoidCallback onEdit;
   final VoidCallback onReactivate;
 
   const _StudentCard({
     required this.student,
-    required this.onToggleGoToday,
-    required this.onToggleTalk,
     required this.onWhatsApp,
     required this.onEdit,
     required this.onReactivate,
@@ -1162,50 +1156,6 @@ class _StudentCard extends StatelessWidget {
                     ],
                   ],
                 ),
-                const SizedBox(height: 14),
-
-                // Vai hoje + Quero falar
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ActionToggle(
-                        label: student.goToday ? 'Vai hoje' : 'Não vai hoje',
-                        icon: student.goToday
-                            ? Icons.check_circle
-                            : Icons.cancel_outlined,
-                        active: student.goToday,
-                        activeColor: AppColors.success,
-                        inactiveColor: AppColors.textSecondary,
-                        onTap: onToggleGoToday,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _ActionToggle(
-                        label: student.talkAcknowledgedByDriver
-                            ? 'Motorista ciente'
-                            : student.talkRequested
-                                ? 'Solicitado'
-                                : 'Quero falar',
-                        icon: student.talkAcknowledgedByDriver
-                            ? Icons.done_all
-                            : Icons.chat_bubble_outline,
-                        active: student.talkRequested || student.talkAcknowledgedByDriver,
-                        activeColor: student.talkAcknowledgedByDriver
-                            ? AppColors.success
-                            : AppColors.warning,
-                        inactiveColor: AppColors.textSecondary,
-                        onTap: () => _showTalkSheet(
-                          context,
-                          student.driverName,
-                          student.driverWhatsapp,
-                          onToggleTalk,
-                          onWhatsApp,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
@@ -1214,108 +1164,6 @@ class _StudentCard extends StatelessWidget {
     );
   }
 
-  void _showTalkSheet(
-    BuildContext context,
-    String driverName,
-    String driverWhatsapp,
-    VoidCallback onLeaveRequest,
-    VoidCallback onWhatsApp,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.textDisabled,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              driverName.isNotEmpty
-                  ? 'Falar com o Motorista $driverName'
-                  : 'Falar com o Motorista',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withAlpha(25),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.warning.withAlpha(80)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.info_outline, size: 16, color: AppColors.warning),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'O motorista não pode responder enquanto estiver dirigindo. '
-                      'Assim que puder, ele entrará em contato pelo WhatsApp.',
-                      style: TextStyle(fontSize: 12, color: AppColors.warning),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  onLeaveRequest();
-                },
-                icon: const Icon(Icons.notifications_outlined),
-                label: const Text('Deixar chamado'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryDark,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  onWhatsApp();
-                },
-                icon: SvgPicture.asset(
-                  'assets/icons/whatsapp.svg',
-                  width: 18, height: 18,
-                  colorFilter: const ColorFilter.mode(
-                      Color(0xFF25D366), BlendMode.srcIn),
-                ),
-                label: const Text('WhatsApp — apenas se urgente'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF25D366),
-                  side: const BorderSide(color: Color(0xFF25D366)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2043,22 +1891,125 @@ class _DocRow extends StatelessWidget {
 // _ReviewRow removido — avaliações serão carregadas da API no futuro
 
 // ---------------------------------------------------------------------------
-// Tab 5 — Communication Status
+// Tab 5 — Communication (ações do dia por aluno)
 // ---------------------------------------------------------------------------
 
 class _CommunicationTab extends ConsumerWidget {
-  const _CommunicationTab();
+  final Future<void> Function(String phone, String name) onWhatsApp;
+
+  const _CommunicationTab({required this.onWhatsApp});
+
+  void _showTalkSheet(
+    BuildContext context,
+    String driverName,
+    String driverWhatsapp,
+    VoidCallback onLeaveRequest,
+    VoidCallback onWhatsAppTap,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textDisabled,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              driverName.isNotEmpty
+                  ? 'Falar com $driverName'
+                  : 'Falar com o Motorista',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withAlpha(25),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.warning.withAlpha(80)),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: AppColors.warning),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'O motorista não pode responder enquanto estiver dirigindo. '
+                      'Assim que puder, ele entrará em contato pelo WhatsApp.',
+                      style: TextStyle(fontSize: 12, color: AppColors.warning),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onLeaveRequest();
+                },
+                icon: const Icon(Icons.notifications_outlined),
+                label: const Text('Deixar chamado'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryDark,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onWhatsAppTap();
+                },
+                icon: SvgPicture.asset(
+                  'assets/icons/whatsapp.svg',
+                  width: 18, height: 18,
+                  colorFilter: const ColorFilter.mode(
+                      Color(0xFF25D366), BlendMode.srcIn),
+                ),
+                label: const Text('WhatsApp — apenas se urgente'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF25D366),
+                  side: const BorderSide(color: Color(0xFF25D366)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(guardianHomeProvider);
     final notifier = ref.read(guardianHomeProvider.notifier);
 
-    final requested = state.students
-        .where((s) => s.talkRequested)
-        .toList();
+    final active = state.students.where((s) => s.ativo).toList();
 
-    if (requested.isEmpty) {
+    if (active.isEmpty) {
       return const Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2067,16 +2018,14 @@ class _CommunicationTab extends ConsumerWidget {
                 size: 56, color: AppColors.textDisabled),
             SizedBox(height: 12),
             Text(
-              'Nenhuma solicitação ativa',
-              style:
-                  TextStyle(color: AppColors.textSecondary, fontSize: 15),
+              'Nenhum filho cadastrado',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 15),
             ),
             SizedBox(height: 6),
             Text(
-              'Use o botão "Quero falar" na aba Filho\npara contatar o motorista.',
+              'Cadastre um filho na aba Filho\npara usar as ações de comunicação.',
               textAlign: TextAlign.center,
-              style:
-                  TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
           ],
         ),
@@ -2086,93 +2035,132 @@ class _CommunicationTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          'Status de comunicação',
-          style: Theme.of(context)
-              .textTheme
-              .titleSmall
-              ?.copyWith(fontWeight: FontWeight.bold),
+        Row(
+          children: [
+            const Icon(Icons.chat_bubble_outline,
+                color: AppColors.primaryDark, size: 18),
+            const SizedBox(width: 6),
+            Text(
+              'Comunicação do dia',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const Spacer(),
+            Text(
+              DateFormat('dd/MM - EEE', 'pt_BR').format(DateTime.now()),
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textSecondary),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
-        ...requested.map((s) {
+        ...active.map((s) {
           final acked = s.talkAcknowledgedByDriver;
           return Card(
-            margin: const EdgeInsets.only(bottom: 10),
+            margin: const EdgeInsets.only(bottom: 12),
             child: Padding(
               padding: const EdgeInsets.all(14),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
-                    backgroundColor: AppColors.primaryLight,
-                    child: Text(s.name[0],
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primaryDark)),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(s.name,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: acked
-                                ? AppColors.success.withAlpha(30)
-                                : AppColors.warning.withAlpha(30),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: acked
-                                  ? AppColors.success
-                                  : AppColors.warning,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                acked ? Icons.done_all : Icons.schedule,
-                                size: 12,
-                                color: acked ? AppColors.success : AppColors.warning,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                acked ? 'Motorista ciente' : 'Aguardando motorista',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: acked
-                                      ? AppColors.success
-                                      : AppColors.warning,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (acked && s.talkAcknowledgedAt != null) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(Icons.access_time,
-                                  size: 11, color: AppColors.textSecondary),
-                              const SizedBox(width: 3),
-                              Text(
-                                s.talkAcknowledgedAt!,
+                  // Cabeçalho do aluno
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundColor: AppColors.primaryLight,
+                        backgroundImage: s.photoUrl != null
+                            ? NetworkImage(s.photoUrl!)
+                            : null,
+                        child: s.photoUrl == null
+                            ? Text(
+                                s.name.isNotEmpty ? s.name[0] : '?',
                                 style: const TextStyle(
-                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primaryDark),
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(s.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 15)),
+                            if (s.driverName.isNotEmpty)
+                              Text(
+                                'Motorista: ${s.driverName}',
+                                style: const TextStyle(
+                                    fontSize: 12,
                                     color: AppColors.textSecondary),
                               ),
-                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Ações do dia
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _ActionToggle(
+                          label: s.goToday ? 'Vai hoje' : 'Não vai hoje',
+                          icon: s.goToday
+                              ? Icons.check_circle
+                              : Icons.cancel_outlined,
+                          active: s.goToday,
+                          activeColor: AppColors.success,
+                          inactiveColor: AppColors.textSecondary,
+                          onTap: () => notifier.toggleGoToday(s.id),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _ActionToggle(
+                          label: acked
+                              ? 'Motorista ciente'
+                              : s.talkRequested
+                                  ? 'Solicitado'
+                                  : 'Quero falar',
+                          icon: acked
+                              ? Icons.done_all
+                              : Icons.chat_bubble_outline,
+                          active: s.talkRequested || acked,
+                          activeColor:
+                              acked ? AppColors.success : AppColors.warning,
+                          inactiveColor: AppColors.textSecondary,
+                          onTap: () => _showTalkSheet(
+                            context,
+                            s.driverName,
+                            s.driverWhatsapp,
+                            () => notifier.toggleTalkRequest(s.id),
+                            () => onWhatsApp(s.driverWhatsapp, s.driverName),
                           ),
-                        ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Horário em que o motorista ficou ciente
+                  if (acked && s.talkAcknowledgedAt != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.access_time,
+                            size: 12, color: AppColors.success),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Ciente às ${s.talkAcknowledgedAt}',
+                          style: const TextStyle(
+                              fontSize: 11, color: AppColors.success),
+                        ),
                       ],
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

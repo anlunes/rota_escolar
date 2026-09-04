@@ -64,6 +64,8 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
   String? _vanCode;
   String? _whatsapp;
   int _alunosAtivos = 0;
+  double _rating = 0;
+  int _ratingCount = 0;
   final TextEditingController _whatsappController = TextEditingController();
 
   @override
@@ -108,6 +110,10 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
             // Dados do veículo extraídos do CRLV
             _veiculoPlaca  = driver['veiculo_placa']  ?? null;
             _veiculoModelo = driver['veiculo_modelo'] ?? null;
+
+            final avaliacoes = driver['avaliacoes'] as Map?;
+            _rating      = (avaliacoes?['rating'] as num?)?.toDouble() ?? 0;
+            _ratingCount = (avaliacoes?['count']  as num?)?.toInt()    ?? 0;
 
             // Cache bust da foto de perfil baseado no updated_at do banco
             if ((driver['foto_url'] ?? '').isNotEmpty) {
@@ -211,7 +217,7 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
 
       final endpoint = tipo == 'crlv'
           ? ApiConstants.uploadFotoCrlv
-          : ApiConstants.uploadFotoCnh;
+          : ApiConstants.uploadFoto;
 
       final response = await dio.post(
         '${ApiConstants.baseUrl}$endpoint',
@@ -317,7 +323,7 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
       });
 
       await dio.post(
-        '${ApiConstants.baseUrl}${ApiConstants.uploadFotoCnh}',
+        '${ApiConstants.baseUrl}${ApiConstants.uploadFoto}',
         data: formData,
         options: Options(
           headers: token != null
@@ -796,7 +802,12 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
                         ],
                       ),
                       const Divider(height: 20),
-                      _InfoRow(label: 'Avaliação média', value: '—'),
+                      _InfoRow(
+                        label: 'Avaliação média',
+                        value: _rating > 0
+                            ? '${_rating.toStringAsFixed(2)} (${_ratingCount} avaliações)'
+                            : 'Sem avaliações ainda',
+                      ),
                       if (_vanCode != null) ...[
                         const Divider(height: 20),
                         Row(

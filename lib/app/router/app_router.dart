@@ -11,6 +11,7 @@ import '../../features/driver_home/presentation/pages/driver_home_page.dart';
 import '../../features/guardian_home/presentation/pages/guardian_home_page.dart';
 import '../../features/faq/presentation/pages/faq_page.dart';
 import '../../features/auth/presentation/pages/reset_code_page.dart';
+import '../../features/onboarding/presentation/pages/onboarding_page.dart';
 import '../../app/core/constants/status_constants.dart';
 
 // ---------------------------------------------------------------------------
@@ -39,6 +40,7 @@ class AppRoutes {
   static const termsDone = '/terms-done';
   static const driverHome = '/driver';
   static const guardianHome = '/guardian';
+  static const onboarding = '/onboarding';
   static const faq = '/faq';
   static const resetCode = '/reset-code';
 }
@@ -120,6 +122,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             authState.role == UserRole.driver) {
           return AppRoutes.driverHome;
         }
+
+        // Onboarding só é acessível por responsáveis
+        if (loc == AppRoutes.onboarding &&
+            authState.role == UserRole.driver) {
+          return AppRoutes.driverHome;
+        }
       }
 
       return null;
@@ -152,6 +160,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.guardianHome,
         builder: (context, state) => const GuardianHomePage(),
+      ),
+      GoRoute(
+        path: AppRoutes.onboarding,
+        builder: (context, state) => const OnboardingPage(),
       ),
       GoRoute(
         path: AppRoutes.faq,

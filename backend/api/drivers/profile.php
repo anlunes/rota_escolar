@@ -49,9 +49,13 @@ try {
     $driver['escolas'] = $e->fetchAll();
 
     // Avaliações
-    $avg = $pdo->prepare("SELECT AVG(nota) AS rating, COUNT(*) AS count FROM avaliacoes WHERE motorista_id = ?");
+    $avg = $pdo->prepare("SELECT AVG(nota) AS rating, COUNT(*) AS total FROM avaliacoes WHERE motorista_id = ?");
     $avg->execute([$driver['motorista_id']]);
-    $driver['avaliacoes'] = $avg->fetch();
+    $avgRow = $avg->fetch(PDO::FETCH_ASSOC);
+    $driver['avaliacoes'] = [
+        'rating' => round((float)($avgRow['rating'] ?? 0), 2),
+        'count'  => (int)($avgRow['total'] ?? 0),
+    ];
 
     Response::success($driver);
 } catch (PDOException $e) {

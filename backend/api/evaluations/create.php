@@ -16,12 +16,12 @@ $uid  = $auth['sub'];
 
 $body       = json_decode(file_get_contents('php://input'), true) ?? [];
 $motoristaId= (int)($body['motorista_id'] ?? 0);
-$nota       = (int)($body['nota']          ?? 0);
+$nota       = (float)($body['nota']        ?? 0);
 $comentario = trim($body['comentario']     ?? '');
 $mes        = trim($body['mes']            ?? date('Y-m'));
 
-if (!$motoristaId || $nota < 1 || $nota > 5) {
-    Response::error('motorista_id e nota (1-5) são obrigatórios.');
+if (!$motoristaId || $nota < 1.0 || $nota > 5.0) {
+    Response::error('motorista_id e nota (1.0-5.0) são obrigatórios.');
 }
 
 try {

@@ -103,11 +103,16 @@ try {
             CAST(COALESCE(rda.talk_acknowledged, 0) AS SIGNED) AS talk_acknowledged,
             COALESCE(m.nome, '') AS driver_name,
             COALESCE(m.telefone, '') AS driver_whatsapp,
-            CAST(COALESCE(a.ativo, 1) AS SIGNED) AS ativo
+            CAST(COALESCE(a.ativo, 1) AS SIGNED) AS ativo,
+            COALESCE(a.foto_url, '') AS foto_url
         FROM alunos a
         LEFT JOIN escolas e ON e.escola_id = a.escola_id
         LEFT JOIN motoristas m ON m.motorista_id = a.motorista_id
-        LEFT JOIN rota_dia_alunos rda ON rda.aluno_id = a.aluno_id
+        LEFT JOIN rota_dia_alunos rda ON rda.id = (
+            SELECT rda2.id FROM rota_dia_alunos rda2
+            WHERE rda2.aluno_id = a.aluno_id
+            ORDER BY rda2.id DESC LIMIT 1
+        )
         WHERE a.aluno_id = ?
         LIMIT 1
     ");

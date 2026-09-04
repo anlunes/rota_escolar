@@ -100,7 +100,7 @@ try {
         if ($ratingStmt) {
             $ratingStmt->execute([$m['motorista_id']]);
             $r = $ratingStmt->fetch(PDO::FETCH_ASSOC);
-            $ratingMedia = round((float)($r['media'] ?? 0), 1);
+            $ratingMedia = round((float)($r['media'] ?? 0), 2);
             $ratingTotal = (int)($r['total'] ?? 0);
         }
 
@@ -117,6 +117,14 @@ try {
         unset($m['motorista_id'], $m['doc_cnh'], $m['doc_crlv'], $m['doc_seguro'], $m['doc_autorizacao']);
     }
     unset($m);
+
+    // Ordena por nota decrescente, depois por nome
+    usort($motoristas, function ($a, $b) {
+        if ($b['rating_media'] !== $a['rating_media']) {
+            return $b['rating_media'] <=> $a['rating_media'];
+        }
+        return strcmp($a['nome'], $b['nome']);
+    });
 
     Response::success($motoristas);
 

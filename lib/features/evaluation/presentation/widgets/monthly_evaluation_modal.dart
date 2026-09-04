@@ -1,25 +1,54 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../data/evaluation_repository.dart';
 
-// Show only on the 1st day of the month; in production persist with SharedPreferences
-bool shouldShowMonthlyEvaluation() {
-  return DateTime.now().day == 1;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+String _mesLabel(String mes) {
+  // mes = 'Y-m', ex: '2026-09'
+  const nomes = [
+    '', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+  ];
+  final parts = mes.split('-');
+  if (parts.length != 2) return mes;
+  final ano = parts[0];
+  final mes0 = int.tryParse(parts[1]) ?? 0;
+  if (mes0 < 1 || mes0 > 12) return mes;
+  return '${nomes[mes0]}/$ano';
 }
 
-class MonthlyEvaluationModal extends StatefulWidget {
-  const MonthlyEvaluationModal({super.key});
+// ---------------------------------------------------------------------------
+// MonthlyEvaluationModal
+// ---------------------------------------------------------------------------
+
+class MonthlyEvaluationModal extends ConsumerStatefulWidget {
+  final int motoristaId;
+  final String mes;
+
+  const MonthlyEvaluationModal({
+    super.key,
+    required this.motoristaId,
+    required this.mes,
+  });
 
   @override
-  State<MonthlyEvaluationModal> createState() =>
+  ConsumerState<MonthlyEvaluationModal> createState() =>
       _MonthlyEvaluationModalState();
 }
 
-class _MonthlyEvaluationModalState extends State<MonthlyEvaluationModal> {
+class _MonthlyEvaluationModalState
+    extends ConsumerState<MonthlyEvaluationModal> {
   double _punctuality = 0;
   double _safety = 0;
   double _courtesy = 0;
   final _commentCtrl = TextEditingController();
+  bool _saving = false;
   bool _submitted = false;
+  String? _errorMsg;
 
   @override
   void dispose() {
@@ -27,11 +56,35 @@ class _MonthlyEvaluationModalState extends State<MonthlyEvaluationModal> {
     super.dispose();
   }
 
-  void _submit() {
-    setState(() => _submitted = true);
-    Future.delayed(const Duration(seconds: 1), () {
+  double get _nota {
+    return ((_punctuality + _safety + _courtesy) / 3).clamp(1.0, 5.0);
+  }
+
+  Future<void> _submit() async {
+    if (_punctuality == 0 || _safety == 0 || _courtesy == 0) {
+      setState(() => _errorMsg = 'Avalie todos os critérios antes de enviar.');
+      return;
+    }
+
+    setState(() { _saving = true; _errorMsg = null; });
+
+    try {
+      await ref.read(evaluationRepositoryProvider).submit(
+        motoristaId: widget.motoristaId,
+        nota: _nota,
+        mes: widget.mes,
+        comentario: _commentCtrl.text.trim(),
+      );
+      if (mounted) setState(() => _submitted = true);
+      await Future.delayed(const Duration(seconds: 1));
       if (mounted) Navigator.of(context).pop();
-    });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMsg = 'Não foi possível enviar. Tente novamente.');
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -42,9 +95,7 @@ class _MonthlyEvaluationModalState extends State<MonthlyEvaluationModal> {
       child: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: _submitted
-              ? _buildThanks()
-              : _buildForm(),
+          child: _submitted ? _buildThanks() : _buildForm(),
         ),
       ),
     );
@@ -102,9 +153,9 @@ class _MonthlyEvaluationModalState extends State<MonthlyEvaluationModal> {
                         .titleMedium
                         ?.copyWith(fontWeight: FontWeight.bold),
                   ),
-                  const Text(
-                    'Maio/2026 — Obrigatório',
-                    style: TextStyle(
+                  Text(
+                    '${_mesLabel(widget.mes)} — Obrigatório',
+                    style: const TextStyle(
                         fontSize: 12, color: AppColors.textSecondary),
                   ),
                 ],
@@ -112,7 +163,6 @@ class _MonthlyEvaluationModalState extends State<MonthlyEvaluationModal> {
             ),
           ],
         ),
-        const SizedBox(height: 4),
         const Divider(height: 24),
 
         // Sliders
@@ -150,31 +200,47 @@ class _MonthlyEvaluationModalState extends State<MonthlyEvaluationModal> {
             ),
           ),
         ),
+
+        if (_errorMsg != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _errorMsg!,
+            style: const TextStyle(color: AppColors.error, fontSize: 13),
+          ),
+        ],
+
         const SizedBox(height: 20),
 
-        // Buttons
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton(
-                onPressed: _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: AppColors.text,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: const Text(
-                  'Enviar e Acessar App',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _saving ? null : _submit,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.text,
+              padding: const EdgeInsets.symmetric(vertical: 14),
             ),
-          ],
+            child: _saving
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.text),
+                  )
+                : const Text(
+                    'Enviar e Acessar App',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+          ),
         ),
       ],
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Slider de avaliação
+// ---------------------------------------------------------------------------
 
 class _RatingSlider extends StatelessWidget {
   final String label;
@@ -201,8 +267,7 @@ class _RatingSlider extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               label,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w600, fontSize: 14),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
             ),
             const Spacer(),
             Row(
