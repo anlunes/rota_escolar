@@ -24,7 +24,7 @@ try {
 
     $mStmt = $pdo->prepare("
         SELECT m.motorista_id, m.pref_estado_id, m.pref_municipio_id, m.van_code, m.whatsapp,
-               m.vagas_van,
+               m.vagas_van, m.preco_km,
                u.telefone
         FROM motoristas m
         LEFT JOIN usuarios u ON u.uid = m.uid
@@ -73,6 +73,7 @@ try {
             'vagas_van'          => $vagasVan,
             'disponivel_manha'   => max(0, $vagasVan - $alunosManha),
             'disponivel_tarde'   => max(0, $vagasVan - $alunosTarde),
+            'preco_km'           => $motorista['preco_km'] !== null ? (float)$motorista['preco_km'] : null,
         ]);
     }
 
@@ -81,8 +82,9 @@ try {
         $bairroIds   = $body['bairro_ids']   ?? [];
         $estadoId    = isset($body['estado_id'])    ? (int)$body['estado_id']    : null;
         $municipioId = isset($body['municipio_id']) ? (int)$body['municipio_id'] : null;
-        $whatsapp    = isset($body['whatsapp'])   ? trim($body['whatsapp'])             : null;
-        $vagasVan    = isset($body['vagas_van'])  ? max(0, (int)$body['vagas_van'])     : null;
+        $whatsapp    = isset($body['whatsapp'])   ? trim($body['whatsapp'])              : null;
+        $vagasVan    = isset($body['vagas_van'])  ? max(0, (int)$body['vagas_van'])      : null;
+        $precoKm     = isset($body['preco_km'])   ? max(0, (float)$body['preco_km'])    : null;
 
         if (!is_array($bairroIds)) Response::error('bairro_ids deve ser um array.', 400);
 
@@ -101,9 +103,10 @@ try {
                 pref_estado_id    = ?,
                 pref_municipio_id = ?,
                 whatsapp          = ?,
-                vagas_van         = COALESCE(?, vagas_van)
+                vagas_van         = COALESCE(?, vagas_van),
+                preco_km          = COALESCE(?, preco_km)
             WHERE motorista_id    = ?
-        ")->execute([$estadoId, $municipioId, $whatsapp, $vagasVan, $motoristaId]);
+        ")->execute([$estadoId, $municipioId, $whatsapp, $vagasVan, $precoKm, $motoristaId]);
 
         $pdo->commit();
 

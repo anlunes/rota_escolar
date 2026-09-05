@@ -1420,14 +1420,14 @@ class _MapTab extends StatelessWidget {
 // Tab 4 — Available Drivers
 // ---------------------------------------------------------------------------
 
-class _DriversTab extends StatefulWidget {
+class _DriversTab extends ConsumerStatefulWidget {
   const _DriversTab();
 
   @override
-  State<_DriversTab> createState() => _DriversTabState();
+  ConsumerState<_DriversTab> createState() => _DriversTabState();
 }
 
-class _DriversTabState extends State<_DriversTab> {
+class _DriversTabState extends ConsumerState<_DriversTab> {
   List<_DriverInfo> _drivers = [];
   bool _loading = true;
   String? _error;
@@ -1463,13 +1463,19 @@ class _DriversTabState extends State<_DriversTab> {
   }
 
   void _showDriverProfile(BuildContext context, _DriverInfo driver) {
+    final activeStudents = ref.read(guardianHomeProvider).students
+        .where((s) => s.ativo)
+        .toList();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _DriverProfileSheet(driver: driver),
+      builder: (_) => _DriverProfileSheet(
+        driver: driver,
+        activeStudents: activeStudents,
+      ),
     );
   }
 
@@ -1673,8 +1679,12 @@ class _VagasChip extends StatelessWidget {
 
 class _DriverProfileSheet extends StatelessWidget {
   final _DriverInfo driver;
+  final List<StudentSummary> activeStudents;
 
-  const _DriverProfileSheet({required this.driver});
+  const _DriverProfileSheet({
+    required this.driver,
+    required this.activeStudents,
+  });
 
   Future<void> _openWhatsApp(BuildContext context) async {
     if (driver.whatsapp.isEmpty) {
@@ -1941,12 +1951,32 @@ class _DriverProfileSheet extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: null, // Em breve
+                onPressed: activeStudents.isEmpty
+                    ? null
+                    : () => showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.vertical(top: Radius.circular(20)),
+                          ),
+                          builder: (_) => _QuoteSheet(
+                            driver: driver,
+                            students: activeStudents,
+                          ),
+                        ),
                 icon: const Icon(Icons.calculate_outlined),
-                label: const Text('Simular orçamento — em breve'),
+                label: Text(activeStudents.isEmpty
+                    ? 'Cadastre um filho para simular'
+                    : 'Simular orçamento mensal'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.textSecondary,
-                  side: const BorderSide(color: AppColors.textDisabled),
+                  foregroundColor: activeStudents.isEmpty
+                      ? AppColors.textSecondary
+                      : AppColors.primaryDark,
+                  side: BorderSide(
+                      color: activeStudents.isEmpty
+                          ? AppColors.textDisabled
+                          : AppColors.primaryDark),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
@@ -1955,6 +1985,321 @@ class _DriverProfileSheet extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Quote Sheet — simulação de orçamento mensal
+// ---------------------------------------------------------------------------
+
+class _QuoteSheet extends StatefulWidget {
+  final _DriverInfo driver;
+  final List<StudentSummary> students;
+
+  const _QuoteSheet({required this.driver, required this.students});
+
+  @override
+  State<_QuoteSheet> createState() => _QuoteSheetState();
+}
+
+class _QuoteSheetState extends State<_QuoteSheet> {
+  late StudentSummary _selectedStudent;
+  bool _loading = false;
+  String? _error;
+  Map<String, dynamic>? _result;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedStudent = widget.students.first;
+  }
+
+  Future<void> _calculate() async {
+    setState(() { _loading = true; _error = null; _result = null; });
+    try {
+      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+      final alunoId = int.tryParse(_selectedStudent.id) ?? 0;
+      final dio = Dio();
+      final res = await dio.get(
+        '${ApiConstants.baseUrl}${ApiConstants.driverQuote}',
+        queryParameters: {
+          'motorista_id': widget.driver.id,
+          'aluno_id': alunoId,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      if (res.data['success'] == true) {
+        setState(() { _result = Map<String, dynamic>.from(res.data['data']); _loading = false; });
+      } else {
+        setState(() { _error = res.data['message'] ?? 'Erro ao calcular.'; _loading = false; });
+      }
+    } on DioException catch (e) {
+      final msg = e.response?.data?['message']?.toString() ?? 'Erro ao calcular orçamento.';
+      setState(() { _error = msg; _loading = false; });
+    } catch (e) {
+      setState(() { _error = 'Erro inesperado.'; _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      maxChildSize: 0.92,
+      minChildSize: 0.4,
+      expand: false,
+      builder: (_, controller) => SingleChildScrollView(
+        controller: controller,
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                    color: AppColors.textDisabled,
+                    borderRadius: BorderRadius.circular(4)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(Icons.calculate_outlined,
+                    color: AppColors.primaryDark, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Orçamento — ${widget.driver.name.split(' ').first}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const Text(
+                        'Estimativa baseada na distância casa → escola',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Seletor de filho
+            if (widget.students.length > 1) ...[
+              const Text('Calcular para:',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                      fontSize: 13)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: widget.students.map((s) {
+                  final sel = s.id == _selectedStudent.id;
+                  return ChoiceChip(
+                    label: Text(s.name.split(' ').first),
+                    selected: sel,
+                    selectedColor: AppColors.primaryDark,
+                    labelStyle: TextStyle(
+                        color: sel ? Colors.white : AppColors.text,
+                        fontWeight: FontWeight.w600),
+                    onSelected: (_) {
+                      setState(() {
+                        _selectedStudent = s;
+                        _result = null;
+                        _error = null;
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // Botão calcular
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _loading ? null : _calculate,
+                icon: _loading
+                    ? const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.route_outlined),
+                label: Text(_loading ? 'Calculando...' : 'Calcular rota'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryDark,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+
+            // Erro
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withAlpha(20),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.error.withAlpha(80)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline,
+                        color: AppColors.error, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(_error!,
+                          style: const TextStyle(
+                              color: AppColors.error, fontSize: 13)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // Resultado
+            if (_result != null) ...[
+              const SizedBox(height: 20),
+              const Divider(),
+              const SizedBox(height: 12),
+
+              // Rota
+              _QuoteRow(
+                icon: Icons.home_outlined,
+                label: 'Saída',
+                value: _result!['origem']?.toString() ?? '',
+              ),
+              const SizedBox(height: 8),
+              _QuoteRow(
+                icon: Icons.school_outlined,
+                label: 'Escola',
+                value: _result!['destino']?.toString() ?? '',
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 12),
+
+              // Distâncias
+              _QuoteRow(
+                icon: Icons.arrow_forward,
+                label: 'Distância ida',
+                value: '${_result!['distancia_ida_km']} km',
+              ),
+              const SizedBox(height: 6),
+              _QuoteRow(
+                icon: Icons.arrow_back,
+                label: 'Distância volta',
+                value: '${_result!['distancia_volta_km']} km',
+              ),
+              const SizedBox(height: 6),
+              _QuoteRow(
+                icon: Icons.swap_vert,
+                label: 'Total por dia',
+                value: '${_result!['distancia_total_km']} km',
+                bold: true,
+              ),
+              const SizedBox(height: 6),
+              _QuoteRow(
+                icon: Icons.calendar_month_outlined,
+                label: 'Dias úteis/mês',
+                value: '${_result!['dias_uteis']} dias',
+              ),
+              const SizedBox(height: 6),
+              _QuoteRow(
+                icon: Icons.speed_outlined,
+                label: 'Preço por km',
+                value: 'R\$ ${double.tryParse(_result!['preco_km']?.toString() ?? '0')?.toStringAsFixed(2)}',
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 12),
+
+              // Total
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight.withAlpha(60),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primaryDark.withAlpha(60)),
+                ),
+                child: Column(
+                  children: [
+                    const Text('Estimativa mensal',
+                        style: TextStyle(
+                            fontSize: 13, color: AppColors.textSecondary)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'R\$ ${double.tryParse(_result!['custo_mensal_estimado']?.toString() ?? '0')?.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primaryDark),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Valor estimado. O preço final é combinado diretamente com o motorista.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 11, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuoteRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool bold;
+
+  const _QuoteRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.bold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppColors.textSecondary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(label,
+              style: const TextStyle(
+                  fontSize: 13, color: AppColors.textSecondary)),
+        ),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: bold ? FontWeight.bold : FontWeight.w600,
+                color: bold ? AppColors.primaryDark : AppColors.text),
+          ),
+        ),
+      ],
     );
   }
 }
