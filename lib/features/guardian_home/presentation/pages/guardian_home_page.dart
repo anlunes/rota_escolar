@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -395,7 +396,9 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
   late final TextEditingController _escolaBairroCtrl;
   late final TextEditingController _escolaCepCtrl;
   int? _escolaId;
+  String? _escolaStatus;
   bool _escolaTemEndereco = true;
+
   List<Map<String, dynamic>> _escolaSuggestions = [];
   bool _loadingEscolas = false;
 
@@ -420,6 +423,7 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
     _escolaBairroCtrl     = TextEditingController();
     _escolaCepCtrl        = TextEditingController();
     _escolaId             = e?.escolaId;
+    _escolaStatus         = e?.escolaId != null ? 'ativo' : null;
     _escolaTemEndereco    = (e?.escolaLogradouro ?? '').isNotEmpty;
     _cicloEscolar    = (e?.cicloEscolar == 'A definir' || e?.cicloEscolar == '') ? null : e?.cicloEscolar;
     _turno           = (e?.turno == '') ? null : e?.turno;
@@ -463,9 +467,10 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
     }
   }
 
+
   Future<void> _searchEscolas(String query) async {
     if (query.length < 2) {
-      setState(() { _escolaSuggestions = []; _escolaId = null; });
+      setState(() { _escolaSuggestions = []; _escolaId = null; _escolaStatus = null; });
       return;
     }
     setState(() => _loadingEscolas = true);
@@ -877,7 +882,6 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
                         hintText: 'Preenchido pelo CEP',
                       ),
                     ),
-                    const SizedBox(height: 20),
 
                     // ── Escola ───────────────────────────────────────────────
                     _SectionLabel('Escola'),
@@ -896,13 +900,13 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 ),
                               )
-                            : _escolaId != null
+                            : _escolaStatus == 'ativo'
                                 ? const Icon(Icons.check_circle, color: AppColors.success)
                                 : null,
                         hintText: 'Digite o nome da escola...',
                       ),
                       onChanged: (v) {
-                        setState(() => _escolaId = null);
+                        setState(() { _escolaId = null; _escolaStatus = null; });
                         _searchEscolas(v);
                       },
                     ),
@@ -926,10 +930,11 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
                               onTap: () {
                                 setState(() {
                                   _escolaId = (e['escola_id'] as num).toInt();
+                                  _escolaStatus           = e['status']?.toString();
                                   _escolaSearchCtrl.text  = e['nome'].toString();
                                   _escolaTemEndereco      = e['tem_logradouro'] == true;
                                   _escolaSuggestions      = [];
-                                  _escolaLogradouroCtrl.clear();
+                                  _escolaLogradouroCtrl.text = e['logradouro']?.toString() ?? '';
                                   _escolaNumeroCtrl.clear();
                                   _escolaBairroCtrl.clear();
                                   _escolaCepCtrl.clear();
@@ -2183,8 +2188,10 @@ class _QuoteSheet extends StatefulWidget {
 class _QuoteSheetState extends State<_QuoteSheet> {
   late StudentSummary _selectedStudent;
   bool _loading = false;
+  bool _pending = false;
   String? _error;
   Map<String, dynamic>? _result;
+  Timer? _pollTimer;
 
   @override
   void initState() {
@@ -2192,8 +2199,21 @@ class _QuoteSheetState extends State<_QuoteSheet> {
     _selectedStudent = widget.students.first;
   }
 
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (_pending && mounted) _calculate();
+    });
+  }
+
   Future<void> _calculate() async {
-    setState(() { _loading = true; _error = null; _result = null; });
+    setState(() { _loading = true; _error = null; });
     try {
       final token = await FirebaseAuth.instance.currentUser?.getIdToken();
       final alunoId = int.tryParse(_selectedStudent.id) ?? 0;
@@ -2207,7 +2227,14 @@ class _QuoteSheetState extends State<_QuoteSheet> {
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       if (res.data['success'] == true) {
-        setState(() { _result = Map<String, dynamic>.from(res.data['data']); _loading = false; });
+        final data = Map<String, dynamic>.from(res.data['data']);
+        if (data['status'] == 'pendente') {
+          setState(() { _pending = true; _loading = false; });
+          _startPolling();
+        } else {
+          _pollTimer?.cancel();
+          setState(() { _pending = false; _result = data; _loading = false; });
+        }
       } else {
         setState(() { _error = res.data['message'] ?? 'Erro ao calcular.'; _loading = false; });
       }
@@ -2299,6 +2326,49 @@ class _QuoteSheetState extends State<_QuoteSheet> {
               const SizedBox(height: 16),
             ],
 
+            // Estado: aguardando confirmação do endereço
+            if (_pending) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight.withAlpha(40),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primaryDark.withAlpha(50)),
+                ),
+                child: Column(
+                  children: [
+                    const SizedBox(
+                      width: 36, height: 36,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 3, color: AppColors.primaryDark),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Preparando seu orçamento',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: AppColors.primaryDark),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Estamos confirmando o endereço para calcular a rota com precisão. Isso pode levar alguns instantes.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 14),
+                    TextButton.icon(
+                      onPressed: _loading ? null : _calculate,
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Verificar agora'),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+
             // Botão calcular
             SizedBox(
               width: double.infinity,
@@ -2318,6 +2388,8 @@ class _QuoteSheetState extends State<_QuoteSheet> {
                 ),
               ),
             ),
+
+            ], // end else pending
 
             // Erro
             if (_error != null) ...[

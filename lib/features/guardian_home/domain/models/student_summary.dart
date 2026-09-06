@@ -27,6 +27,8 @@ class StudentSummary {
   final String dataNascimento; // ISO: yyyy-MM-dd
   final int? escolaId;
   final String escolaLogradouro;
+  final double? latResidencia;
+  final double? lonResidencia;
   final String? lastUpdateTime;
   final List<String>? stepTimes;
 
@@ -54,6 +56,8 @@ class StudentSummary {
     this.dataNascimento = '',
     this.escolaId,
     this.escolaLogradouro = '',
+    this.latResidencia,
+    this.lonResidencia,
     this.lastUpdateTime,
     this.stepTimes,
   });
@@ -85,6 +89,8 @@ class StudentSummary {
     String? dataNascimento,
     Object? escolaId = _keep,
     String? escolaLogradouro,
+    Object? latResidencia = _keep,
+    Object? lonResidencia = _keep,
     Object? lastUpdateTime = _keep,
     List<String>? stepTimes,
   }) {
@@ -115,6 +121,8 @@ class StudentSummary {
       dataNascimento: dataNascimento ?? this.dataNascimento,
       escolaId: escolaId == _keep ? this.escolaId : escolaId as int?,
       escolaLogradouro: escolaLogradouro ?? this.escolaLogradouro,
+      latResidencia: latResidencia == _keep ? this.latResidencia : latResidencia as double?,
+      lonResidencia: lonResidencia == _keep ? this.lonResidencia : lonResidencia as double?,
       lastUpdateTime: lastUpdateTime == _keep
           ? this.lastUpdateTime
           : lastUpdateTime as String?,

@@ -63,6 +63,8 @@ try {
             COALESCE(a.numero_residencia, '')     AS numero,
             COALESCE(a.bairro_residencia, '')     AS bairro_aluno,
             COALESCE(a.cep_residencia, '')        AS cep,
+            a.lat_residencia,
+            a.lon_residencia,
             COALESCE(e.nome, '')                  AS escola_nome,
             COALESCE(e.logradouro, '')            AS escola_logradouro,
             COALESCE(e.bairro, '')                AS escola_bairro,
@@ -83,6 +85,20 @@ try {
     }
     if (empty($aluno['escola_nome'])) {
         Response::error('Escola do aluno não cadastrada.', 422);
+    }
+
+    // Se ainda não tem coordenadas precisas → registra solicitação e retorna pendente
+    if (empty($aluno['lat_residencia']) || empty($aluno['lon_residencia'])) {
+        $pdo->prepare("
+            INSERT INTO solicitacoes_orcamento (aluno_id, motorista_id, status, created_at, updated_at)
+            VALUES (?, ?, 'pendente', NOW(), NOW())
+            ON DUPLICATE KEY UPDATE updated_at = NOW()
+        ")->execute([$alunoId, $motoristaId]);
+
+        Response::success(
+            ['status' => 'pendente'],
+            'Estamos preparando seu orçamento. Confirmaremos o endereço em breve e você receberá o resultado.'
+        );
     }
 
     // Enriquece endereço do aluno via ViaCEP (gratuito, sem chave)
@@ -140,10 +156,20 @@ try {
     }
 
     if (!$googleAtivo) {
-        // Geocodifica origem (endereço do aluno) via ORS → CEP → Nominatim
-        $coordOrigem = _orsGeocode($origemTexto);
-        if (!$coordOrigem) $coordOrigem = _geocodePorCep($cepLimpo);
-        if (!$coordOrigem) $coordOrigem = _geocodeNominatimCascata($origemTexto, $cidade ?? $municipio);
+        // Origem: usa coords já salvas no banco (geocodificadas na primeira vez)
+        if (!empty($aluno['lat_residencia']) && !empty($aluno['lon_residencia'])) {
+            $coordOrigem = [(float)$aluno['lat_residencia'], (float)$aluno['lon_residencia']];
+        } else {
+            // Geocodifica via ORS → CEP → Nominatim e salva para reutilizar
+            $coordOrigem = _orsGeocode($origemTexto);
+            if (!$coordOrigem) $coordOrigem = _geocodePorCep($cepLimpo);
+            if (!$coordOrigem) $coordOrigem = _geocodeNominatimCascata($origemTexto, $cidade ?? $municipio);
+            // Persiste as coords para que o próximo quote seja instantâneo
+            if ($coordOrigem) {
+                $pdo->prepare("UPDATE alunos SET lat_residencia = ?, lon_residencia = ? WHERE aluno_id = ?")
+                    ->execute([$coordOrigem[0], $coordOrigem[1], $alunoId]);
+            }
+        }
 
         // Coordenadas do destino: usa banco se disponível (precisão garantida),
         // senão geocodifica pelo texto — sujeito a erros para nomes de escola
@@ -178,7 +204,14 @@ try {
     $diasUteis       = 22;
     $custoMensal     = round($distanciaTotal * $precoKm * $diasUteis, 2);
 
+    // Marca solicitação como pronta (se havia sido registrada)
+    $pdo->prepare("
+        UPDATE solicitacoes_orcamento SET status = 'pronto', updated_at = NOW()
+        WHERE aluno_id = ? AND motorista_id = ?
+    ")->execute([$alunoId, $motoristaId]);
+
     Response::success([
+        'status'                 => 'pronto',
         'aluno_nome'             => $aluno['aluno_nome'],
         'origem'                 => $origemTexto,
         'destino'                => $aluno['escola_nome'],

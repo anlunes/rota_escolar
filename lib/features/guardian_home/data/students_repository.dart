@@ -156,6 +156,8 @@ class StudentsRepository {
       dataNascimento: json['data_nascimento']?.toString()  ?? '',
       escolaId:       json['escola_id'] != null ? int.tryParse(json['escola_id'].toString()) : null,
       escolaLogradouro: json['escola_logradouro']?.toString() ?? '',
+      latResidencia: json['lat_residencia'] != null ? double.tryParse(json['lat_residencia'].toString()) : null,
+      lonResidencia: json['lon_residencia'] != null ? double.tryParse(json['lon_residencia'].toString()) : null,
       photoUrl:      (json['foto_url']?.toString() ?? '').isNotEmpty
                          ? json['foto_url'].toString()
                          : null,

@@ -53,6 +53,8 @@ try {
                 COALESCE(a.numero_residencia, '') AS numero_residencia,
                 COALESCE(a.complemento, '') AS complemento,
                 COALESCE(a.bairro_residencia, '') AS bairro_residencia,
+                a.lat_residencia,
+                a.lon_residencia,
                 COALESCE(a.ciclo_escolar, '') AS ciclo_escolar,
                 COALESCE(a.turno, '') AS turno,
                 COALESCE(a.data_nascimento, '') AS data_nascimento,
@@ -154,15 +156,20 @@ try {
         }
 
         // Insere aluno com todos os campos
-        $logradouro = trim($body['logradouro'] ?? '');
+        $logradouro    = trim($body['logradouro'] ?? '');
+        $latResidencia = isset($body['lat_residencia']) && is_numeric($body['lat_residencia'])
+                         ? (float)$body['lat_residencia'] : null;
+        $lonResidencia = isset($body['lon_residencia']) && is_numeric($body['lon_residencia'])
+                         ? (float)$body['lon_residencia'] : null;
 
         $ins = $pdo->prepare("
             INSERT INTO alunos (
                 responsavel_id, nome, escola_id, cep_residencia,
                 logradouro, numero_residencia, complemento, bairro_residencia,
+                lat_residencia, lon_residencia,
                 ciclo_escolar, turno, van_code, data_nascimento,
                 ativo, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())
         ");
         $ins->execute([
             $responsavel['responsavel_id'],
@@ -173,6 +180,8 @@ try {
             $numero ?: null,
             $complemento ?: null,
             $bairroRes ?: null,
+            $latResidencia,
+            $lonResidencia,
             $ciclo ?: null,
             $turno ?: null,
             $van ?: null,
@@ -188,6 +197,8 @@ try {
                 a.nome AS name,
                 COALESCE(e.nome, 'Sem escola') AS school,
                 COALESCE(a.cep_residencia, '') AS residence_cep,
+                a.lat_residencia,
+                a.lon_residencia,
                 COALESCE(a.ciclo_escolar, '') AS ciclo_escolar,
                 'waiting_van' AS status_atual,
                 1 AS vai_hoje,

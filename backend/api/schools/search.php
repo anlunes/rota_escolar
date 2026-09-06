@@ -46,7 +46,7 @@ try {
 
     // Tenta FULLTEXT primeiro
     $stmt = $pdo->prepare("
-        SELECT escola_id, nome, municipio, estado, lat, lon, logradouro,
+        SELECT escola_id, nome, municipio, estado, status, lat, lon, logradouro,
                MATCH(nome) AGAINST (? IN BOOLEAN MODE) AS relevancia,
                IF(estado = 'RJ', 1, 0) AS preferencia_rj
         FROM escolas
@@ -62,7 +62,7 @@ try {
     if (empty($escolas)) {
         $likeParams = array_merge(['%' . $q . '%'], $params);
         $stmt = $pdo->prepare("
-            SELECT escola_id, nome, municipio, estado, lat, lon, logradouro
+            SELECT escola_id, nome, municipio, estado, status, lat, lon, logradouro
             FROM escolas
             WHERE nome LIKE ?
               AND {$whereStr}
@@ -79,6 +79,8 @@ try {
             'nome'           => $e['nome'],
             'municipio'      => $e['municipio'],
             'estado'         => $e['estado'],
+            'status'         => $e['status'],
+            'logradouro'     => $e['logradouro'] ?? '',
             'tem_coords'     => !empty($e['lat']) && !empty($e['lon']),
             'tem_logradouro' => !empty($e['logradouro']),
         ], $escolas),

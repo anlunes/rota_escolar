@@ -133,6 +133,28 @@ try {
     $escolasComEndereco = [];
 }
 
+// Orçamentos com endereço residencial pendente de confirmação
+try {
+    $orcamentosPendentes = $pdo->query("
+        SELECT so.id, so.aluno_id, so.created_at,
+               a.nome AS aluno_nome,
+               COALESCE(a.logradouro, '')          AS logradouro,
+               COALESCE(a.numero_residencia, '')   AS numero,
+               COALESCE(a.bairro_residencia, '')   AS bairro,
+               COALESCE(a.cep_residencia, '')      AS cep,
+               u.nome AS motorista_nome
+        FROM solicitacoes_orcamento so
+        JOIN alunos a      ON a.aluno_id       = so.aluno_id
+        JOIN motoristas m  ON m.motorista_id   = so.motorista_id
+        JOIN usuarios u    ON u.uid            = m.uid
+        WHERE so.status = 'pendente'
+          AND (a.lat_residencia IS NULL OR a.lon_residencia IS NULL)
+        ORDER BY so.created_at ASC
+    ")->fetchAll();
+} catch (Throwable $e) {
+    $orcamentosPendentes = [];
+}
+
 // Escolas não encontradas pelo script (revisão manual com Street View)
 try {
     $escolasNaoEncontradas = $pdo->query("
@@ -284,6 +306,67 @@ try {
 </header>
 
 <main>
+
+  <!-- Endereços residenciais pendentes de confirmação -->
+  <div class="section">
+    <div class="section-title">
+      📍 Endereços residenciais aguardando confirmação
+      <?php if (!empty($orcamentosPendentes)): ?>
+        <span class="badge"><?= count($orcamentosPendentes) ?></span>
+      <?php endif; ?>
+    </div>
+
+    <?php if (empty($orcamentosPendentes)): ?>
+      <p class="empty">Nenhum endereço pendente.</p>
+    <?php else: ?>
+      <table>
+        <thead>
+          <tr>
+            <th>Aluno</th>
+            <th>Endereço</th>
+            <th>Motorista</th>
+            <th>Coordenadas (Google Maps)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($orcamentosPendentes as $o): ?>
+          <tr>
+            <td><?= htmlspecialchars($o['aluno_nome']) ?></td>
+            <td>
+              <?= htmlspecialchars(implode(', ', array_filter([
+                  $o['logradouro'],
+                  $o['numero'] ? 'nº ' . $o['numero'] : '',
+                  $o['bairro'],
+                  $o['cep'],
+              ]))) ?>
+              <br>
+              <a class="btn-link" style="margin-top:4px;font-size:.78rem"
+                 href="https://maps.google.com/?q=<?= urlencode(implode(', ', array_filter([$o['logradouro'], $o['numero'], $o['bairro']]))) ?>"
+                 target="_blank">🗺 Abrir no Maps</a>
+            </td>
+            <td><?= htmlspecialchars($o['motorista_nome']) ?></td>
+            <td>
+              <div class="coords-input-group">
+                <input type="text" id="lat_res_<?= $o['id'] ?>" placeholder="Latitude"
+                       title="Cole aqui: -22.8793, -43.3568 — preenche os dois automaticamente">
+                <input type="text" id="lon_res_<?= $o['id'] ?>" placeholder="Longitude">
+              </div>
+              <small style="color:#888;font-size:.74rem">
+                Maps → pressione longamente → copie as coordenadas
+              </small>
+            </td>
+            <td>
+              <button class="btn-aprovar" onclick="confirmarResidencia(<?= $o['id'] ?>)">
+                ✓ Confirmar
+              </button>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    <?php endif; ?>
+  </div>
 
   <!-- Bairros pendentes -->
   <div class="section">
@@ -668,6 +751,37 @@ function showMsg(text, ok) {
   el.style.whiteSpace = 'pre-wrap';
   el.className = ok ? 'ok' : 'err';
   el.style.display = 'block';
+}
+
+// Confirma coordenadas de residência via AJAX
+async function confirmarResidencia(id) {
+  const latInput = document.getElementById('lat_res_' + id);
+  const lonInput = document.getElementById('lon_res_' + id);
+  const lat = latInput.value.trim().replace(',', '.');
+  const lon = lonInput.value.trim().replace(',', '.');
+
+  if (!lat || !lon || isNaN(parseFloat(lat)) || isNaN(parseFloat(lon))) {
+    alert('Informe latitude e longitude antes de confirmar.\n\nDica: no Google Maps, pressione longamente no local e copie as coordenadas que aparecem no topo do menu.');
+    return;
+  }
+  if (!confirm('Confirmar coordenadas (' + lat + ', ' + lon + ') para este aluno?')) return;
+
+  try {
+    const res = await fetch('../api/admin/confirm_residencia.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ solicitacao_id: id, lat: parseFloat(lat), lon: parseFloat(lon) }),
+    });
+    const json = await res.json();
+    if (json.success) {
+      alert('✓ Coordenadas salvas! O orçamento será entregue ao responsável na próxima consulta.');
+      location.reload();
+    } else {
+      alert('Erro: ' + json.message);
+    }
+  } catch (e) {
+    alert('Erro de conexão: ' + e);
+  }
 }
 
 // Detecta paste no formato "lat, lon" do Google Maps e preenche os dois campos

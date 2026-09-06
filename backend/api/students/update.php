@@ -75,6 +75,12 @@ try {
     if ($turno)       { $fields[] = 'turno = ?';             $params[] = $turno; }
     if ($dataNasc)    { $fields[] = 'data_nascimento = ?';   $params[] = $dataNasc; }
     if ($vanCode)     { $fields[] = 'van_code = ?';          $params[] = $vanCode; }
+    // Se o endereço mudou, zera as coords para forçar re-geocodificação no próximo quote
+    $enderecoMudou = $logradouro || $numero || $bairro || $rcep;
+    if ($enderecoMudou) {
+        $fields[] = 'lat_residencia = ?'; $params[] = null;
+        $fields[] = 'lon_residencia = ?'; $params[] = null;
+    }
     $fields[] = 'updated_at = NOW()';
     $params[] = $id;
 
@@ -93,6 +99,8 @@ try {
             COALESCE(a.numero_residencia, '') AS numero_residencia,
             COALESCE(a.complemento, '') AS complemento,
             COALESCE(a.bairro_residencia, '') AS bairro_residencia,
+            a.lat_residencia,
+            a.lon_residencia,
             COALESCE(a.ciclo_escolar, '') AS ciclo_escolar,
             COALESCE(a.turno, '') AS turno,
             COALESCE(a.data_nascimento, '') AS data_nascimento,
