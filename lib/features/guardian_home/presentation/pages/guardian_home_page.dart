@@ -390,7 +390,12 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
 
   // Escola
   late final TextEditingController _escolaSearchCtrl;
+  late final TextEditingController _escolaLogradouroCtrl;
+  late final TextEditingController _escolaNumeroCtrl;
+  late final TextEditingController _escolaBairroCtrl;
+  late final TextEditingController _escolaCepCtrl;
   int? _escolaId;
+  bool _escolaTemEndereco = true;
   List<Map<String, dynamic>> _escolaSuggestions = [];
   bool _loadingEscolas = false;
 
@@ -409,7 +414,13 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
     _numeroCtrl      = TextEditingController(text: e?.numero ?? '');
     _complementoCtrl = TextEditingController(text: e?.complemento ?? '');
     _bairroCtrl      = TextEditingController(text: e?.bairro ?? '');
-    _escolaSearchCtrl = TextEditingController(text: e?.school ?? '');
+    _escolaSearchCtrl     = TextEditingController(text: e?.school ?? '');
+    _escolaLogradouroCtrl = TextEditingController(text: e?.escolaLogradouro ?? '');
+    _escolaNumeroCtrl     = TextEditingController();
+    _escolaBairroCtrl     = TextEditingController();
+    _escolaCepCtrl        = TextEditingController();
+    _escolaId             = e?.escolaId;
+    _escolaTemEndereco    = (e?.escolaLogradouro ?? '').isNotEmpty;
     _cicloEscolar    = (e?.cicloEscolar == 'A definir' || e?.cicloEscolar == '') ? null : e?.cicloEscolar;
     _turno           = (e?.turno == '') ? null : e?.turno;
     _photoUrl        = e?.photoUrl;
@@ -426,6 +437,10 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
     _complementoCtrl.dispose();
     _bairroCtrl.dispose();
     _escolaSearchCtrl.dispose();
+    _escolaLogradouroCtrl.dispose();
+    _escolaNumeroCtrl.dispose();
+    _escolaBairroCtrl.dispose();
+    _escolaCepCtrl.dispose();
     super.dispose();
   }
 
@@ -457,12 +472,13 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
     try {
       final dio = Dio();
       final res = await dio.get(
-        '${ApiConstants.baseUrl}${ApiConstants.locationEscolas}',
+        '${ApiConstants.baseUrl}${ApiConstants.schoolSearch}',
         queryParameters: {'q': query},
       );
       if (res.data is Map && res.data['success'] == true) {
+        final escolas = res.data['data']?['escolas'] as List? ?? [];
         setState(() {
-          _escolaSuggestions = List<Map<String, dynamic>>.from(res.data['data']);
+          _escolaSuggestions = List<Map<String, dynamic>>.from(escolas);
         });
       }
     } catch (_) {
@@ -566,6 +582,35 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
       );
       return;
     }
+    if (_escolaId != null && !_escolaTemEndereco &&
+        (_escolaLogradouroCtrl.text.trim().isEmpty || _escolaNumeroCtrl.text.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe o logradouro e o número da escola para continuar')),
+      );
+      return;
+    }
+
+    // Salva endereço da escola se foi informado pelo pai
+    if (_escolaId != null && !_escolaTemEndereco &&
+        _escolaLogradouroCtrl.text.trim().isNotEmpty) {
+      final partes = [
+        _escolaLogradouroCtrl.text.trim(),
+        _escolaNumeroCtrl.text.trim(),
+        _escolaBairroCtrl.text.trim(),
+      ].where((p) => p.isNotEmpty).toList();
+      final logradouroCompleto = partes.join(', ');
+      FirebaseAuth.instance.currentUser?.getIdToken().then((token) {
+        Dio().post(
+          '${ApiConstants.baseUrl}${ApiConstants.schoolUpdateAddress}',
+          data: {
+            'escola_id':  _escolaId,
+            'logradouro': logradouroCompleto,
+          },
+          options: Options(headers: token != null ? {'Authorization': 'Bearer $token'} : {}),
+        ).catchError((_) {});
+      });
+    }
+
     final van = _vanCodeCtrl.text.trim();
     final ctx = context;
 
@@ -870,8 +915,9 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
                         ),
                         child: Column(
                           children: _escolaSuggestions.map((e) {
-                            final bairro = e['bairro']?.toString() ?? '';
-                            final sub = bairro.isNotEmpty ? bairro : '';
+                            final municipio = e['municipio']?.toString() ?? '';
+                            final estado    = e['estado']?.toString() ?? '';
+                            final sub = [municipio, estado].where((s) => s.isNotEmpty).join('/');
                             return ListTile(
                               dense: true,
                               leading: const Icon(Icons.school_outlined, size: 18),
@@ -879,15 +925,146 @@ class _RegisterChildDialogState extends State<_RegisterChildDialog> {
                               subtitle: sub.isNotEmpty ? Text(sub, style: const TextStyle(fontSize: 11)) : null,
                               onTap: () {
                                 setState(() {
-                                  _escolaId = (e['id'] as num).toInt();
-                                  _escolaSearchCtrl.text = e['nome'].toString();
-                                  _escolaSuggestions = [];
+                                  _escolaId = (e['escola_id'] as num).toInt();
+                                  _escolaSearchCtrl.text  = e['nome'].toString();
+                                  _escolaTemEndereco      = e['tem_logradouro'] == true;
+                                  _escolaSuggestions      = [];
+                                  _escolaLogradouroCtrl.clear();
+                                  _escolaNumeroCtrl.clear();
+                                  _escolaBairroCtrl.clear();
+                                  _escolaCepCtrl.clear();
                                 });
                               },
                             );
                           }).toList(),
                         ),
                       ),
+                    // Endereço da escola já cadastrado (read-only, mesma estrutura do residencial)
+                    if (_escolaId != null && _escolaTemEndereco && _escolaLogradouroCtrl.text.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Builder(builder: (_) {
+                        // Parseia "Logradouro, Numero, Bairro" → partes separadas
+                        final partes = _escolaLogradouroCtrl.text.split(', ');
+                        final logradouro = partes.isNotEmpty ? partes[0] : _escolaLogradouroCtrl.text;
+                        final numero     = partes.length > 1 ? partes[1] : '';
+                        final bairro     = partes.length > 2 ? partes.sublist(2).join(', ') : '';
+                        return Column(
+                          children: [
+                            TextField(
+                              readOnly: true,
+                              controller: TextEditingController(text: logradouro),
+                              decoration: const InputDecoration(
+                                labelText: 'Logradouro',
+                                prefixIcon: Icon(Icons.signpost_outlined),
+                              ),
+                            ),
+                            if (numero.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: TextField(
+                                      readOnly: true,
+                                      controller: TextEditingController(text: numero),
+                                      decoration: const InputDecoration(
+                                        labelText: 'Número',
+                                      ),
+                                    ),
+                                  ),
+                                  if (bairro.isNotEmpty) ...[
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      flex: 3,
+                                      child: TextField(
+                                        readOnly: true,
+                                        controller: TextEditingController(text: bairro),
+                                        decoration: const InputDecoration(
+                                          labelText: 'Bairro',
+                                          prefixIcon: Icon(Icons.map_outlined),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ],
+                        );
+                      }),
+                    ],
+
+                    // Endereço da escola (só aparece quando escola selecionada não tem endereço)
+                    if (_escolaId != null && !_escolaTemEndereco) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          border: Border.all(color: Colors.amber.shade300),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.info_outline, size: 16, color: Colors.amber.shade800),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Esta escola ainda não tem endereço. Informe para confirmarmos a localização:',
+                                    style: TextStyle(fontSize: 12, color: Colors.amber.shade900),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _escolaLogradouroCtrl,
+                              textCapitalization: TextCapitalization.words,
+                              decoration: const InputDecoration(
+                                labelText: 'Logradouro *',
+                                prefixIcon: Icon(Icons.signpost_outlined),
+                                hintText: 'Ex: Estrada do Portela',
+                                isDense: true,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  flex: 2,
+                                  child: TextField(
+                                    controller: _escolaNumeroCtrl,
+                                    keyboardType: TextInputType.text,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Número *',
+                                      hintText: '1056',
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  flex: 3,
+                                  child: TextField(
+                                    controller: _escolaBairroCtrl,
+                                    textCapitalization: TextCapitalization.words,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Bairro',
+                                      prefixIcon: Icon(Icons.map_outlined),
+                                      hintText: 'Madureira',
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
 
                     // ── VanCode ──────────────────────────────────────────────

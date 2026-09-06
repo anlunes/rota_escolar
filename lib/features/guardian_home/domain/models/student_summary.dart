@@ -25,6 +25,8 @@ class StudentSummary {
   final String bairro;
   final String turno;
   final String dataNascimento; // ISO: yyyy-MM-dd
+  final int? escolaId;
+  final String escolaLogradouro;
   final String? lastUpdateTime;
   final List<String>? stepTimes;
 
@@ -50,6 +52,8 @@ class StudentSummary {
     this.bairro = '',
     this.turno = '',
     this.dataNascimento = '',
+    this.escolaId,
+    this.escolaLogradouro = '',
     this.lastUpdateTime,
     this.stepTimes,
   });
@@ -79,6 +83,8 @@ class StudentSummary {
     String? bairro,
     String? turno,
     String? dataNascimento,
+    Object? escolaId = _keep,
+    String? escolaLogradouro,
     Object? lastUpdateTime = _keep,
     List<String>? stepTimes,
   }) {
@@ -107,6 +113,8 @@ class StudentSummary {
       bairro: bairro ?? this.bairro,
       turno: turno ?? this.turno,
       dataNascimento: dataNascimento ?? this.dataNascimento,
+      escolaId: escolaId == _keep ? this.escolaId : escolaId as int?,
+      escolaLogradouro: escolaLogradouro ?? this.escolaLogradouro,
       lastUpdateTime: lastUpdateTime == _keep
           ? this.lastUpdateTime
           : lastUpdateTime as String?,

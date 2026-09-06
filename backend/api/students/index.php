@@ -47,6 +47,7 @@ try {
                 a.nome AS name,
                 COALESCE(e.nome, 'Sem escola') AS school,
                 a.escola_id,
+                COALESCE(e.logradouro, '') AS escola_logradouro,
                 COALESCE(a.cep_residencia, '') AS residence_cep,
                 COALESCE(a.logradouro, '') AS logradouro,
                 COALESCE(a.numero_residencia, '') AS numero_residencia,

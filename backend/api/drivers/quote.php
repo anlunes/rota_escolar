@@ -66,7 +66,9 @@ try {
             COALESCE(e.nome, '')                  AS escola_nome,
             COALESCE(e.logradouro, '')            AS escola_logradouro,
             COALESCE(e.bairro, '')                AS escola_bairro,
-            COALESCE(e.municipio, '')             AS escola_municipio
+            COALESCE(e.municipio, '')             AS escola_municipio,
+            e.lat                                 AS escola_lat,
+            e.lon                                 AS escola_lon
         FROM alunos a
         LEFT JOIN escolas e ON e.escola_id = a.escola_id
         WHERE a.aluno_id = ?
@@ -120,7 +122,8 @@ try {
     ])));
 
     // ── Cálculo de distância ─────────────────────────────────────────────────
-    $usouGoogleMaps = false;
+    $usouGoogleMaps    = false;
+    $escolaTemCoords   = !empty($aluno['escola_lat']) && !empty($aluno['escola_lon']);
 
     $googleAtivo = defined('GOOGLE_MAPS_API_KEY') && GOOGLE_MAPS_API_KEY !== 'COLE_SUA_CHAVE_AQUI';
 
@@ -137,14 +140,19 @@ try {
     }
 
     if (!$googleAtivo) {
-        // Geocodifica via ORS (Pelias) — mais preciso que Nominatim para Brasil
-        $coordOrigem  = _orsGeocode($origemTexto);
-        $coordDestino = _orsGeocode($destinoTexto);
-
-        // Fallback Nominatim se ORS falhar
+        // Geocodifica origem (endereço do aluno) via ORS → CEP → Nominatim
+        $coordOrigem = _orsGeocode($origemTexto);
         if (!$coordOrigem) $coordOrigem = _geocodePorCep($cepLimpo);
         if (!$coordOrigem) $coordOrigem = _geocodeNominatimCascata($origemTexto, $cidade ?? $municipio);
-        if (!$coordDestino) $coordDestino = _geocodeNominatimCascata($destinoTexto, $cidade ?? $municipio);
+
+        // Coordenadas do destino: usa banco se disponível (precisão garantida),
+        // senão geocodifica pelo texto — sujeito a erros para nomes de escola
+        if ($escolaTemCoords) {
+            $coordDestino = [(float)$aluno['escola_lat'], (float)$aluno['escola_lon']];
+        } else {
+            $coordDestino = _orsGeocode($destinoTexto);
+            if (!$coordDestino) $coordDestino = _geocodeNominatimCascata($destinoTexto, $cidade ?? $municipio);
+        }
 
         if (!$coordOrigem) {
             Response::error('Não foi possível localizar o endereço do aluno. Verifique se está completo.', 422);
@@ -152,7 +160,6 @@ try {
         if (!$coordDestino) {
             Response::error('Não foi possível localizar a escola. Verifique o endereço cadastrado.', 422);
         }
-
 
         // Estratégia 2: OpenRouteService (roteamento real, gratuito)
         $distanciaIda = _orsDistanciaKm($coordOrigem[1], $coordOrigem[0], $coordDestino[1], $coordDestino[0]);

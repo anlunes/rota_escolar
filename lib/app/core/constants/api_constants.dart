@@ -58,6 +58,8 @@ class ApiConstants {
   static const String locationBairrosCreate = '/api/location/bairros_create.php';
   static const String locationEscolas = '/api/location/escolas.php';
   static const String locationEscolasCreate = '/api/location/escolas_create.php';
+  static const String schoolSearch         = '/api/schools/search.php';
+  static const String schoolUpdateAddress  = '/api/schools/update_address.php';
 
   static const String guardianProfile      = '/api/guardian/profile.php';
   static const String guardianAbsences    = '/api/guardian/absences.php';

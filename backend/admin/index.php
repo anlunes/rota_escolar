@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao   = $_POST['acao']   ?? '';
     $tabela = $_POST['tabela'] ?? '';
 
-    if ($id && in_array($acao, ['aprovar', 'rejeitar'])) {
+    if ($id && in_array($acao, ['aprovar', 'rejeitar', 'aprovar_coords'])) {
         $pdo = Database::getInstance();
 
         if ($tabela === 'bairros') {
@@ -33,8 +33,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($tabela === 'escolas') {
             if ($acao === 'aprovar') {
                 $pdo->prepare("UPDATE escolas SET status = 'ativo' WHERE escola_id = ?")->execute([$id]);
+            } elseif ($acao === 'aprovar_coords') {
+                // Aprovação manual com lat/lon digitados pelo admin
+                $lat = isset($_POST['lat']) ? (float)$_POST['lat'] : null;
+                $lon = isset($_POST['lon']) ? (float)$_POST['lon'] : null;
+                if ($lat && $lon) {
+                    $pdo->prepare("
+                        UPDATE escolas
+                        SET status = 'ativo', lat = ?, lon = ?, geocode_fonte = 'manual_admin'
+                        WHERE escola_id = ?
+                    ")->execute([$lat, $lon, $id]);
+                }
             } else {
-                $pdo->prepare("DELETE FROM escolas WHERE escola_id = ? AND status = 'pendente'")->execute([$id]);
+                $pdo->prepare("UPDATE escolas SET status = 'rejeitada' WHERE escola_id = ?")->execute([$id]);
             }
         }
     }
@@ -72,9 +83,59 @@ $bairrosPendentes = $pdo->query("
     ORDER BY id DESC
 ")->fetchAll();
 
-// Escolas pendentes
+// Escolas pendentes com endereço preenchido pelo pai (aguardando aprovação)
 try {
     $escolasPendentes = $pdo->query("
+        SELECT escola_id, nome,
+               COALESCE(logradouro, '')  AS logradouro,
+               COALESCE(municipio, '')   AS municipio,
+               COALESCE(estado, '')      AS estado
+        FROM escolas
+        WHERE status = 'pendente'
+          AND logradouro IS NOT NULL AND logradouro != ''
+        ORDER BY escola_id DESC
+    ")->fetchAll();
+} catch (Throwable $e) {
+    $escolasPendentes = [];
+    $escolasErro = $e->getMessage();
+}
+
+// Escolas verificadas automaticamente (script achou coords, aguarda aprovação admin)
+try {
+    $escolasVerificadas = $pdo->query("
+        SELECT escola_id, nome,
+               COALESCE(bairro, '')      AS bairro,
+               COALESCE(municipio, '')   AS municipio,
+               COALESCE(estado, '')      AS estado,
+               lat, lon, geocode_fonte
+        FROM escolas
+        WHERE status = 'verificado'
+          AND lat IS NOT NULL
+        ORDER BY escola_id DESC
+    ")->fetchAll();
+} catch (Throwable $e) {
+    $escolasVerificadas = [];
+}
+
+// Escolas com endereço informado pelo pai — aguardando coordenadas do admin
+try {
+    $escolasComEndereco = $pdo->query("
+        SELECT escola_id, nome,
+               COALESCE(logradouro, '') AS logradouro,
+               COALESCE(municipio, '')  AS municipio,
+               COALESCE(estado, '')     AS estado
+        FROM escolas
+        WHERE logradouro IS NOT NULL AND logradouro != ''
+          AND (lat IS NULL OR lon IS NULL)
+        ORDER BY escola_id DESC
+    ")->fetchAll();
+} catch (Throwable $e) {
+    $escolasComEndereco = [];
+}
+
+// Escolas não encontradas pelo script (revisão manual com Street View)
+try {
+    $escolasNaoEncontradas = $pdo->query("
         SELECT escola_id, nome,
                COALESCE(bairro, '')      AS bairro,
                COALESCE(logradouro, '')  AS logradouro,
@@ -83,12 +144,11 @@ try {
                COALESCE(municipio, '')   AS municipio,
                COALESCE(estado, '')      AS estado
         FROM escolas
-        WHERE status = 'pendente'
+        WHERE status = 'nao_encontrado'
         ORDER BY escola_id DESC
     ")->fetchAll();
 } catch (Throwable $e) {
-    $escolasPendentes = [];
-    $escolasErro = $e->getMessage();
+    $escolasNaoEncontradas = [];
 }
 ?>
 <!DOCTYPE html>
@@ -197,6 +257,23 @@ try {
   #reset-msg { margin-top: 12px; padding: 10px 14px; border-radius: 6px; display: none; font-size: .9rem; }
   #reset-msg.ok  { background: #eafaf1; color: #1e8449; border: 1px solid #a9dfbf; }
   #reset-msg.err { background: #fdecea; color: #c0392b; border: 1px solid #f5c6c6; }
+
+  /* Fila de revisão de escolas */
+  .badge-ok  { background: #27ae60; color: #fff; font-size: .75rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+  .badge-warn{ background: #e67e22; color: #fff; font-size: .75rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+  .coords-tag { font-size: .78rem; color: #27ae60; font-family: monospace; }
+  .btn-link {
+    background: none; border: 1px solid #2c7be5; color: #2c7be5;
+    padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: .82rem;
+    text-decoration: none; display: inline-block;
+  }
+  .btn-link:hover { background: #eaf1fb; }
+  .coords-input-group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .coords-input-group input {
+    width: 130px; padding: 5px 8px; border: 1px solid #ddd;
+    border-radius: 6px; font-size: .85rem; font-family: monospace;
+  }
+  .coords-input-group input:focus { outline: 2px solid #2c7be5; border-color: transparent; }
 </style>
 </head>
 <body>
@@ -270,28 +347,36 @@ try {
     <?php else: ?>
       <table>
         <thead>
-          <tr><th>#</th><th>Escola</th><th>Bairro</th><th>Endereço</th><th>Ações</th></tr>
+          <tr><th>#</th><th>Escola</th><th>Endereço</th><th>Verificar</th><th>Lat / Lon</th><th>Ações</th></tr>
         </thead>
         <tbody>
-          <?php foreach ($escolasPendentes as $e): ?>
+          <?php foreach ($escolasPendentes as $e):
+            $searchQuery = urlencode($e['nome'] . ' ' . $e['logradouro'] . ' ' . $e['municipio']);
+            $mapsUrl     = 'https://www.google.com/maps/search/?api=1&query=' . $searchQuery;
+          ?>
           <tr>
             <td><?= $e['escola_id'] ?></td>
             <td><?= htmlspecialchars($e['nome']) ?></td>
-            <td><?= htmlspecialchars($e['bairro']) ?></td>
             <td style="font-size:.85rem">
-              <?= htmlspecialchars(trim($e['logradouro'] . ' ' . $e['numero'])) ?>
-              <?php if ($e['cep']): ?><br><span style="color:#888"><?= htmlspecialchars($e['cep']) ?> — <?= htmlspecialchars($e['municipio']) ?>/<?= htmlspecialchars($e['estado']) ?></span><?php endif; ?>
+              <?= htmlspecialchars($e['logradouro']) ?>
+              <br><span style="color:#aaa"><?= htmlspecialchars($e['municipio']) ?>/<?= htmlspecialchars($e['estado']) ?></span>
             </td>
             <td>
-              <div class="actions">
-                <form method="POST" style="display:inline">
-                  <input type="hidden" name="id"     value="<?= $e['escola_id'] ?>">
-                  <input type="hidden" name="acao"   value="aprovar">
-                  <input type="hidden" name="tabela" value="escolas">
-                  <button class="btn-aprovar" type="submit">✓ Aprovar</button>
-                </form>
+              <a class="btn-link" href="<?= $mapsUrl ?>" target="_blank">📍 Ver no Maps</a>
+            </td>
+            <td>
+              <div class="coords-input-group">
+                <input type="text" id="lat_pend_<?= $e['escola_id'] ?>" placeholder="-22.9035" title="Latitude">
+                <input type="text" id="lon_pend_<?= $e['escola_id'] ?>" placeholder="-43.1731" title="Longitude">
+                <small style="color:#aaa;font-size:.75rem">Cole "lat, lon" do Maps no 1º campo</small>
+              </div>
+            </td>
+            <td>
+              <div class="actions" style="flex-direction:column;gap:6px">
+                <button class="btn-aprovar" type="button"
+                        onclick="aprovarComCoords(<?= $e['escola_id'] ?>,'pend')">✓ Salvar e aprovar</button>
                 <form method="POST" style="display:inline"
-                      onsubmit="return confirm('Rejeitar e excluir esta escola?')">
+                      onsubmit="return confirm('Rejeitar esta escola?')">
                   <input type="hidden" name="id"     value="<?= $e['escola_id'] ?>">
                   <input type="hidden" name="acao"   value="rejeitar">
                   <input type="hidden" name="tabela" value="escolas">
@@ -305,6 +390,173 @@ try {
       </table>
     <?php endif; ?>
   </div>
+
+  <!-- Escolas com endereço informado pelo pai — aguardando coords -->
+  <?php if (!empty($escolasComEndereco)): ?>
+  <div class="section">
+    <div class="section-title">
+      Escolas com endereço — aguardando coordenadas
+      <span class="badge-warn"><?= count($escolasComEndereco) ?></span>
+      <span style="font-size:.8rem;color:#888;font-weight:400">&nbsp;— endereço informado pelo responsável, confirme no Maps e insira lat/lon</span>
+    </div>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Escola</th><th>Endereço informado</th><th>Verificar</th><th>Lat / Lon</th><th>Ações</th></tr>
+      </thead>
+      <tbody>
+        <?php foreach ($escolasComEndereco as $e):
+          $searchQuery = urlencode($e['nome'] . ' ' . $e['logradouro'] . ' ' . $e['municipio']);
+          $mapsUrl     = 'https://www.google.com/maps/search/?api=1&query=' . $searchQuery;
+        ?>
+        <tr>
+          <td><?= $e['escola_id'] ?></td>
+          <td><?= htmlspecialchars($e['nome']) ?></td>
+          <td style="font-size:.85rem">
+            <?= htmlspecialchars($e['logradouro']) ?>
+            <?php if ($e['municipio']): ?>
+              <br><span style="color:#aaa"><?= htmlspecialchars($e['municipio']) ?>/<?= htmlspecialchars($e['estado']) ?></span>
+            <?php endif; ?>
+          </td>
+          <td>
+            <a class="btn-link" href="<?= $mapsUrl ?>" target="_blank">📍 Ver no Maps</a>
+          </td>
+          <td>
+            <div class="coords-input-group">
+              <input type="text" id="lat_ce_<?= $e['escola_id'] ?>" placeholder="-22.9035" title="Latitude">
+              <input type="text" id="lon_ce_<?= $e['escola_id'] ?>" placeholder="-43.1731" title="Longitude">
+              <small style="color:#aaa;font-size:.75rem">Cole "lat, lon" do Maps no 1º campo</small>
+            </div>
+          </td>
+          <td>
+            <div class="actions" style="flex-direction:column;gap:6px">
+              <button class="btn-aprovar" type="button"
+                      onclick="aprovarComCoords(<?= $e['escola_id'] ?>,'ce')">✓ Salvar e aprovar</button>
+              <form method="POST" style="display:inline"
+                    onsubmit="return confirm('Rejeitar esta escola?')">
+                <input type="hidden" name="id"     value="<?= $e['escola_id'] ?>">
+                <input type="hidden" name="acao"   value="rejeitar">
+                <input type="hidden" name="tabela" value="escolas">
+                <button class="btn-rejeitar" type="submit">✕ Rejeitar</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <?php endif; ?>
+
+  <!-- Escolas verificadas automaticamente -->
+  <?php if (!empty($escolasVerificadas)): ?>
+  <div class="section">
+    <div class="section-title">
+      Escolas verificadas automaticamente
+      <span class="badge-ok"><?= count($escolasVerificadas) ?></span>
+      <span style="font-size:.8rem;color:#888;font-weight:400">&nbsp;— coordenadas encontradas pelo script, aguardando aprovação</span>
+    </div>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Escola</th><th>Município</th><th>Coordenadas</th><th>Fonte</th><th>Ações</th></tr>
+      </thead>
+      <tbody>
+        <?php foreach ($escolasVerificadas as $e):
+          $mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($e['nome'] . ' ' . $e['municipio']);
+        ?>
+        <tr>
+          <td><?= $e['escola_id'] ?></td>
+          <td><?= htmlspecialchars($e['nome']) ?></td>
+          <td><?= htmlspecialchars($e['municipio']) ?>/<?= htmlspecialchars($e['estado']) ?></td>
+          <td class="coords-tag"><?= $e['lat'] ?>, <?= $e['lon'] ?></td>
+          <td style="font-size:.8rem;color:#888"><?= htmlspecialchars($e['geocode_fonte'] ?? '') ?></td>
+          <td>
+            <div class="actions" style="flex-wrap:wrap;gap:6px">
+              <a class="btn-link" href="https://www.google.com/maps?q=<?= $e['lat'] ?>,<?= $e['lon'] ?>" target="_blank">📍 Ver no Maps</a>
+              <form method="POST" style="display:inline">
+                <input type="hidden" name="id"     value="<?= $e['escola_id'] ?>">
+                <input type="hidden" name="acao"   value="aprovar">
+                <input type="hidden" name="tabela" value="escolas">
+                <button class="btn-aprovar" type="submit">✓ Aprovar</button>
+              </form>
+              <form method="POST" style="display:inline"
+                    onsubmit="return confirm('Rejeitar esta escola?')">
+                <input type="hidden" name="id"     value="<?= $e['escola_id'] ?>">
+                <input type="hidden" name="acao"   value="rejeitar">
+                <input type="hidden" name="tabela" value="escolas">
+                <button class="btn-rejeitar" type="submit">✕ Rejeitar</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <?php endif; ?>
+
+  <!-- Escolas não encontradas — revisão manual -->
+  <?php if (!empty($escolasNaoEncontradas)): ?>
+  <div class="section">
+    <div class="section-title">
+      Escolas não encontradas — revisão manual
+      <span class="badge-warn"><?= count($escolasNaoEncontradas) ?></span>
+      <span style="font-size:.8rem;color:#888;font-weight:400">&nbsp;— informe lat/lon após verificar no Street View</span>
+    </div>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Escola</th><th>Endereço informado</th><th>Verificar</th><th>Lat / Lon</th><th>Ações</th></tr>
+      </thead>
+      <tbody>
+        <?php foreach ($escolasNaoEncontradas as $e):
+          $enderecoCompleto = trim(implode(', ', array_filter([
+              $e['logradouro'],
+              $e['numero'] ? 'nº ' . $e['numero'] : '',
+              $e['bairro'],
+              $e['municipio'],
+              $e['estado'],
+          ])));
+          $searchQuery   = urlencode($e['nome'] . ' ' . $e['municipio'] . ' ' . $e['estado']);
+          $streetQuery   = urlencode($enderecoCompleto . ', Brasil');
+          $mapsSearchUrl = 'https://www.google.com/maps/search/?api=1&query=' . $searchQuery;
+          $streetViewUrl = 'https://www.google.com/maps?q=' . $streetQuery . '&layer=c';
+        ?>
+        <tr>
+          <td><?= $e['escola_id'] ?></td>
+          <td><?= htmlspecialchars($e['nome']) ?></td>
+          <td style="font-size:.82rem">
+            <?= htmlspecialchars($enderecoCompleto) ?>
+            <?php if ($e['cep']): ?><br><span style="color:#aaa">CEP <?= htmlspecialchars($e['cep']) ?></span><?php endif; ?>
+          </td>
+          <td style="white-space:nowrap">
+            <a class="btn-link" href="<?= $mapsSearchUrl ?>" target="_blank" style="display:block;margin-bottom:4px">🔍 Buscar escola</a>
+            <a class="btn-link" href="<?= $streetViewUrl ?>" target="_blank">🚶 Street View</a>
+          </td>
+          <td>
+            <div class="coords-input-group">
+              <input type="text" id="lat_<?= $e['escola_id'] ?>" placeholder="-22.9035" title="Latitude">
+              <input type="text" id="lon_<?= $e['escola_id'] ?>" placeholder="-43.1731" title="Longitude">
+              <small style="color:#aaa;font-size:.75rem">Cole do Maps</small>
+            </div>
+          </td>
+          <td>
+            <div class="actions" style="flex-direction:column;gap:6px">
+              <button class="btn-aprovar" type="button"
+                      onclick="aprovarComCoords(<?= $e['escola_id'] ?>,'')">✓ Salvar e aprovar</button>
+              <form method="POST" style="display:inline"
+                    onsubmit="return confirm('Rejeitar esta escola?')">
+                <input type="hidden" name="id"     value="<?= $e['escola_id'] ?>">
+                <input type="hidden" name="acao"   value="rejeitar">
+                <input type="hidden" name="tabela" value="escolas">
+                <button class="btn-rejeitar" type="submit">✕ Rejeitar</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <?php endif; ?>
 
   <!-- Zerar Rota do Dia -->
   <div class="section">
@@ -416,6 +668,53 @@ function showMsg(text, ok) {
   el.style.whiteSpace = 'pre-wrap';
   el.className = ok ? 'ok' : 'err';
   el.style.display = 'block';
+}
+
+// Detecta paste no formato "lat, lon" do Google Maps e preenche os dois campos
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('input[id^="lat_"]').forEach(latInput => {
+    latInput.addEventListener('paste', (e) => {
+      const text = (e.clipboardData || window.clipboardData).getData('text').trim();
+      // Formato Google Maps: "-22.879304955882514, -43.356891195031714"
+      const match = text.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);
+      if (match) {
+        e.preventDefault();
+        const lonId = latInput.id.replace(/^lat_/, 'lon_');
+        const lonInput = document.getElementById(lonId);
+        latInput.value = match[1];
+        if (lonInput) lonInput.value = match[2];
+        latInput.style.background = '#eafaf1';
+        if (lonInput) lonInput.style.background = '#eafaf1';
+        setTimeout(() => {
+          latInput.style.background = '';
+          if (lonInput) lonInput.style.background = '';
+        }, 1500);
+      }
+    });
+  });
+});
+
+function aprovarComCoords(id, prefixo) {
+  const pref = prefixo ? 'lat_' + prefixo + '_' : 'lat_';
+  const lat = document.getElementById(pref + id).value.trim().replace(',', '.');
+  const lon = document.getElementById((prefixo ? 'lon_' + prefixo + '_' : 'lon_') + id).value.trim().replace(',', '.');
+
+  if (!lat || !lon || isNaN(parseFloat(lat)) || isNaN(parseFloat(lon))) {
+    alert('Informe latitude e longitude antes de aprovar.\n\nDica: no Google Maps, clique com o botão direito no ponto e copie as coordenadas que aparecem no topo do menu.');
+    return;
+  }
+
+  if (!confirm('Salvar coordenadas (' + lat + ', ' + lon + ') e aprovar esta escola?')) return;
+
+  const form = document.createElement('form');
+  form.method = 'POST';
+  [['id', id], ['acao', 'aprovar_coords'], ['tabela', 'escolas'], ['lat', lat], ['lon', lon]].forEach(([k, v]) => {
+    const inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = k; inp.value = v;
+    form.appendChild(inp);
+  });
+  document.body.appendChild(form);
+  form.submit();
 }
 </script>
 </body>
