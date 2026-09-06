@@ -2474,6 +2474,24 @@ class _QuoteSheetState extends State<_QuoteSheet> {
               const Divider(),
               const SizedBox(height: 12),
 
+              // Detalhamento de custos
+              _QuoteRow(
+                icon: Icons.local_gas_station_outlined,
+                label: 'Combustível estimado',
+                value: 'R\$ ${double.tryParse(_result!['custo_combustivel']?.toString() ?? _result!['custo_mensal_estimado']?.toString() ?? '0')?.toStringAsFixed(2)}',
+              ),
+              if ((double.tryParse(_result!['custo_servico']?.toString() ?? '0') ?? 0) > 0) ...[
+                const SizedBox(height: 6),
+                _QuoteRow(
+                  icon: Icons.handshake_outlined,
+                  label: 'Serviço do motorista',
+                  value: 'R\$ ${double.tryParse(_result!['custo_servico']?.toString() ?? '0')?.toStringAsFixed(2)}/mês',
+                ),
+              ],
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 12),
+
               // Total
               Container(
                 width: double.infinity,
@@ -2485,12 +2503,12 @@ class _QuoteSheetState extends State<_QuoteSheet> {
                 ),
                 child: Column(
                   children: [
-                    const Text('Estimativa mensal',
+                    const Text('Estimativa mensal total',
                         style: TextStyle(
                             fontSize: 13, color: AppColors.textSecondary)),
                     const SizedBox(height: 4),
                     Text(
-                      'R\$ ${double.tryParse(_result!['custo_mensal_estimado']?.toString() ?? '0')?.toStringAsFixed(2)}',
+                      'R\$ ${double.tryParse(_result!['custo_total']?.toString() ?? _result!['custo_mensal_estimado']?.toString() ?? '0')?.toStringAsFixed(2)}',
                       style: const TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,

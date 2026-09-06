@@ -24,7 +24,7 @@ try {
 
     $mStmt = $pdo->prepare("
         SELECT m.motorista_id, m.pref_estado_id, m.pref_municipio_id, m.van_code, m.whatsapp,
-               m.vagas_van, m.preco_km,
+               m.vagas_van, m.preco_km, m.valor_servico,
                u.telefone
         FROM motoristas m
         LEFT JOIN usuarios u ON u.uid = m.uid
@@ -73,7 +73,8 @@ try {
             'vagas_van'          => $vagasVan,
             'disponivel_manha'   => max(0, $vagasVan - $alunosManha),
             'disponivel_tarde'   => max(0, $vagasVan - $alunosTarde),
-            'preco_km'           => $motorista['preco_km'] !== null ? (float)$motorista['preco_km'] : null,
+            'preco_km'           => $motorista['preco_km']      !== null ? (float)$motorista['preco_km']      : null,
+            'valor_servico'      => $motorista['valor_servico'] !== null ? (float)$motorista['valor_servico'] : 0.0,
         ]);
     }
 
@@ -82,9 +83,10 @@ try {
         $bairroIds   = $body['bairro_ids']   ?? [];
         $estadoId    = isset($body['estado_id'])    ? (int)$body['estado_id']    : null;
         $municipioId = isset($body['municipio_id']) ? (int)$body['municipio_id'] : null;
-        $whatsapp    = isset($body['whatsapp'])   ? trim($body['whatsapp'])              : null;
-        $vagasVan    = isset($body['vagas_van'])  ? max(0, (int)$body['vagas_van'])      : null;
-        $precoKm     = isset($body['preco_km'])   ? max(0, (float)$body['preco_km'])    : null;
+        $whatsapp      = isset($body['whatsapp'])      ? trim($body['whatsapp'])                  : null;
+        $vagasVan      = isset($body['vagas_van'])    ? max(0, (int)$body['vagas_van'])          : null;
+        $precoKm       = isset($body['preco_km'])     ? max(0, (float)$body['preco_km'])         : null;
+        $valorServico  = isset($body['valor_servico']) ? max(0, (float)$body['valor_servico'])   : null;
 
         if (!is_array($bairroIds)) Response::error('bairro_ids deve ser um array.', 400);
 
@@ -104,9 +106,10 @@ try {
                 pref_municipio_id = ?,
                 whatsapp          = ?,
                 vagas_van         = COALESCE(?, vagas_van),
-                preco_km          = COALESCE(?, preco_km)
+                preco_km          = COALESCE(?, preco_km),
+                valor_servico     = COALESCE(?, valor_servico)
             WHERE motorista_id    = ?
-        ")->execute([$estadoId, $municipioId, $whatsapp, $vagasVan, $precoKm, $motoristaId]);
+        ")->execute([$estadoId, $municipioId, $whatsapp, $vagasVan, $precoKm, $valorServico, $motoristaId]);
 
         $pdo->commit();
 

@@ -40,7 +40,7 @@ try {
 
     // ── Preço/km do motorista ────────────────────────────────────────────────
     $mStmt = $pdo->prepare("
-        SELECT m.preco_km, COALESCE(mu.nome, '') AS municipio_nome
+        SELECT m.preco_km, m.valor_servico, COALESCE(mu.nome, '') AS municipio_nome
         FROM motoristas m
         LEFT JOIN municipios mu ON mu.id = m.pref_municipio_id
         WHERE m.motorista_id = ? LIMIT 1
@@ -49,7 +49,8 @@ try {
     $motorista = $mStmt->fetch();
     if (!$motorista) Response::error('Motorista não encontrado.', 404);
 
-    $precoKm = $motorista['preco_km'] !== null ? (float)$motorista['preco_km'] : null;
+    $precoKm      = $motorista['preco_km']      !== null ? (float)$motorista['preco_km']      : null;
+    $valorServico = $motorista['valor_servico'] !== null ? (float)$motorista['valor_servico'] : 0.0;
     if (!$precoKm || $precoKm <= 0) {
         Response::error('Este motorista ainda não informou o preço por km.', 422);
     }
@@ -200,9 +201,10 @@ try {
         }
     }
 
-    $distanciaTotal  = $distanciaIda + $distanciaVolta;
-    $diasUteis       = 22;
-    $custoMensal     = round($distanciaTotal * $precoKm * $diasUteis, 2);
+    $distanciaTotal   = $distanciaIda + $distanciaVolta;
+    $diasUteis        = 22;
+    $custoCombustivel = round($distanciaTotal * $precoKm * $diasUteis, 2);
+    $custoTotal       = round($custoCombustivel + $valorServico, 2);
 
     // Marca solicitação como pronta (se havia sido registrada)
     $pdo->prepare("
@@ -220,7 +222,11 @@ try {
         'distancia_total_km'     => round($distanciaTotal, 2),
         'preco_km'               => $precoKm,
         'dias_uteis'             => $diasUteis,
-        'custo_mensal_estimado'  => $custoMensal,
+        'custo_combustivel'      => $custoCombustivel,
+        'custo_servico'          => $valorServico,
+        'custo_total'            => $custoTotal,
+        // mantido para compatibilidade
+        'custo_mensal_estimado'  => $custoTotal,
         'metodo_calculo'         => $usouGoogleMaps ? 'google_maps' : 'openrouteservice',
     ]);
 

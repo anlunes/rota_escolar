@@ -70,9 +70,10 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
   int _vagasVan = 0;
   int _alunosManha = 0;
   int _alunosTarde = 0;
-  final TextEditingController _whatsappController  = TextEditingController();
-  final TextEditingController _vagasVanController  = TextEditingController();
-  final TextEditingController _precoKmController   = TextEditingController();
+  final TextEditingController _whatsappController      = TextEditingController();
+  final TextEditingController _vagasVanController      = TextEditingController();
+  final TextEditingController _precoKmController       = TextEditingController();
+  final TextEditingController _valorServicoController  = TextEditingController();
 
   @override
   void initState() {
@@ -146,6 +147,7 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
     _whatsappController.dispose();
     _vagasVanController.dispose();
     _precoKmController.dispose();
+    _valorServicoController.dispose();
     super.dispose();
   }
 
@@ -411,6 +413,10 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
             _precoKmController.text  = precoKm != null && precoKm > 0
                 ? precoKm.toStringAsFixed(2)
                 : '';
+            final valorServico = double.tryParse(data['valor_servico']?.toString() ?? '');
+            _valorServicoController.text = valorServico != null && valorServico > 0
+                ? valorServico.toStringAsFixed(2)
+                : '';
             final whatsappDb       = (data['whatsapp']           as String?) ?? '';
             final telefoneCadastro = (data['telefone_cadastro']  as String?) ?? '';
             _whatsappController.text = whatsappDb.isNotEmpty
@@ -459,12 +465,13 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
     final response = await dio.post(
       '${ApiConstants.baseUrl}${ApiConstants.driverBairros}',
       data: {
-        'bairro_ids':   _selectedBairroIds,
-        'estado_id':    _prefEstadoId,
-        'municipio_id': _prefMunicipioId,
-        'whatsapp':     _whatsappController.text.trim(),
-        'vagas_van': int.tryParse(_vagasVanController.text.trim()) ?? 0,
-        'preco_km':  double.tryParse(_precoKmController.text.trim().replaceAll(',', '.')) ?? 0,
+        'bairro_ids':    _selectedBairroIds,
+        'estado_id':     _prefEstadoId,
+        'municipio_id':  _prefMunicipioId,
+        'whatsapp':      _whatsappController.text.trim(),
+        'vagas_van':     int.tryParse(_vagasVanController.text.trim()) ?? 0,
+        'preco_km':      double.tryParse(_precoKmController.text.trim().replaceAll(',', '.')) ?? 0,
+        'valor_servico': double.tryParse(_valorServicoController.text.trim().replaceAll(',', '.')) ?? 0,
       },
       options: Options(headers: token != null ? {'Authorization': 'Bearer $token'} : {}),
     );
@@ -860,11 +867,11 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
                               style: TextStyle(
                                   fontWeight: FontWeight.w600, fontSize: 14)),
                           SizedBox(
-                            width: 72,
+                            width: 64,
                             child: TextField(
                               controller: _precoKmController,
                               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              textAlign: TextAlign.start,
+                              textAlign: TextAlign.end,
                               style: const TextStyle(
                                   fontWeight: FontWeight.w600, fontSize: 14),
                               decoration: const InputDecoration(
@@ -875,7 +882,40 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
                               ),
                             ),
                           ),
+                          const SizedBox(width: 4),
                           const Text('/km',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary)),
+                        ],
+                      ),
+                      const Divider(height: 20),
+                      Row(
+                        children: [
+                          const Text('Valor mensal por aluno',
+                              style: TextStyle(color: AppColors.textSecondary)),
+                          const Spacer(),
+                          const Text('R\$ ',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 14)),
+                          SizedBox(
+                            width: 64,
+                            child: TextField(
+                              controller: _valorServicoController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              textAlign: TextAlign.end,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 14),
+                              decoration: const InputDecoration(
+                                hintText: '0,00',
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Text('/mês',
                               style: TextStyle(
                                   fontSize: 12,
                                   color: AppColors.textSecondary)),
