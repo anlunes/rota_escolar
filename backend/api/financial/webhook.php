@@ -12,6 +12,7 @@
  */
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../config/asaas.php';
 require_once __DIR__ . '/../../helpers/response.php';
 
 header('Content-Type: application/json');
@@ -19,6 +20,14 @@ header('Content-Type: application/json');
 // Asaas pode enviar OPTIONS
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST')   { http_response_code(405); exit; }
+
+// Valida token de autenticação enviado pelo Asaas no header
+$tokenRecebido = $_SERVER['HTTP_ASAAS_ACCESS_TOKEN'] ?? '';
+if (ASAAS_WEBHOOK_TOKEN && $tokenRecebido !== ASAAS_WEBHOOK_TOKEN) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Unauthorized']);
+    exit;
+}
 
 $raw     = file_get_contents('php://input');
 $payload = json_decode($raw, true);
