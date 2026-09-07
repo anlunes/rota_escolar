@@ -36,9 +36,10 @@ class ApiConstants {
   static const String driversIndex = '/api/drivers/index.php';
   static const String driversProfile = '/api/drivers/profile.php';
 
-  static const String financialIndex = '/api/financial/index.php';
-  static const String financialPay = '/api/financial/pay.php';
-  static const String financialNotify = '/api/financial/notify.php';
+  static const String financialIndex    = '/api/financial/index.php';
+  static const String financialPay      = '/api/financial/pay.php';
+  static const String financialGenerate = '/api/financial/generate.php';
+  static const String financialNotify   = '/api/financial/notify.php';
 
   static const String routesIndex = '/api/routes/index.php';
   static const String routesReorder = '/api/routes/reorder.php';

@@ -12,19 +12,37 @@ import '../../../../app/core/services/rtdb_service.dart';
 // ---------------------------------------------------------------------------
 
 class PaymentRecord {
+  final int    id;
   final String studentName;
-  final String month;
+  final String responsavelNome;
+  final String responsavelWhatsapp;
+  final int    mes;
+  final int    ano;
   final double amount;
-  final bool paid;
-  final bool paidInCash;
+  final String status;          // pendente | pago | atrasado | cancelado
+  final String? formaPagamento; // asaas | dinheiro
+  final String? asaasLink;
+  final String? dataVencimento;
+  final String? dataPagamento;
 
   const PaymentRecord({
+    required this.id,
     required this.studentName,
-    required this.month,
+    required this.responsavelNome,
+    required this.responsavelWhatsapp,
+    required this.mes,
+    required this.ano,
     required this.amount,
-    required this.paid,
-    this.paidInCash = false,
+    required this.status,
+    this.formaPagamento,
+    this.asaasLink,
+    this.dataVencimento,
+    this.dataPagamento,
   });
+
+  bool get paid       => status == 'pago';
+  bool get atrasado   => status == 'atrasado';
+  bool get paidInCash => formaPagamento == 'dinheiro';
 }
 
 // ---------------------------------------------------------------------------
@@ -320,20 +338,29 @@ class DriverHomeNotifier extends StateNotifier<DriverHomeState> {
     state = state.copyWith(students: updated);
   }
 
-  void markPaymentCash(int index) {
-    final list = List<PaymentRecord>.from(state.payments);
-    final p = list[index];
-    list[index] = PaymentRecord(
-      studentName: p.studentName,
-      month: p.month,
-      amount: p.amount,
-      paid: true,
-      paidInCash: true,
-    );
+  void markPaymentCash(int mensalidadeId) {
+    final list = state.payments.map((p) {
+      if (p.id == mensalidadeId) {
+        return PaymentRecord(
+          id: p.id,
+          studentName: p.studentName,
+          responsavelNome: p.responsavelNome,
+          responsavelWhatsapp: p.responsavelWhatsapp,
+          mes: p.mes,
+          ano: p.ano,
+          amount: p.amount,
+          status: 'pago',
+          formaPagamento: 'dinheiro',
+          asaasLink: p.asaasLink,
+          dataVencimento: p.dataVencimento,
+          dataPagamento: DateTime.now().toIso8601String().substring(0, 10),
+        );
+      }
+      return p;
+    }).toList();
     state = state.copyWith(payments: list);
 
-    // Persist to API (fire and forget)
-    _repository.markPayment('payment_$index').catchError((_) => false);
+    _repository.markPayment(mensalidadeId).catchError((_) => false);
   }
 
   Future<void> acceptOpportunity(String id) async {
