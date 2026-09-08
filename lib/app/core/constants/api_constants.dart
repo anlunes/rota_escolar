@@ -24,6 +24,7 @@ class ApiConstants {
   static const String authForgotPassword    = '/api/auth/forgot_password.php';
   static const String authVerifyResetCode   = '/api/auth/verify_reset_code.php';
   static const String authSendVerification  = '/api/auth/send_verification.php';
+  static const String authVerifyEmail       = '/api/auth/verify_email.php';
 
   static const String studentsIndex   = '/api/students/index.php';
   static const String studentsUpdate  = '/api/students/update.php';
@@ -36,10 +37,9 @@ class ApiConstants {
   static const String driversIndex = '/api/drivers/index.php';
   static const String driversProfile = '/api/drivers/profile.php';
 
-  static const String financialIndex    = '/api/financial/index.php';
-  static const String financialPay      = '/api/financial/pay.php';
-  static const String financialGenerate = '/api/financial/generate.php';
-  static const String financialNotify   = '/api/financial/notify.php';
+  static const String financialIndex = '/api/financial/index.php';
+  static const String financialPay = '/api/financial/pay.php';
+  static const String financialNotify = '/api/financial/notify.php';
 
   static const String routesIndex = '/api/routes/index.php';
   static const String routesReorder = '/api/routes/reorder.php';

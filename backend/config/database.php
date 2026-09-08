@@ -4,8 +4,8 @@ class Database {
 
     private static array $config = [
         'host'   => 'localhost',
-        'user'   => 'rotaesco_Master26',
-        'pass'   => 'Cpanel26@',
+        'user'   => 'rotaesco_anlunes',
+        'pass'   => 'Senharota26@',
         'dbname' => 'rotaesco_bd',
         'charset'=> 'utf8mb4',
     ];

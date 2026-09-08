@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../application/auth_state_provider.dart';
 import '../../../../app/core/constants/status_constants.dart';
 import '../../../../app/core/widgets/app_button.dart';
+import '../../../../app/router/app_router.dart';
 import '../../../../app/theme/app_colors.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
@@ -44,25 +46,11 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     final state = ref.read(authNotifierProvider);
     if (state.pendingVerificationEmail != null && state.errorMessage == null) {
       final email = state.pendingVerificationEmail!;
+      final nome = _nameCtrl.text.trim();
       ref.read(authNotifierProvider.notifier).clearPendingEmail();
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Verifique seu e-mail'),
-          content: Text(
-            'Enviamos um link de verificação para $email.\n\n'
-            'Acesse sua caixa de entrada, clique no link e depois faça login.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('OK, entendido'),
-            ),
-          ],
-        ),
-      );
-      if (mounted) Navigator.of(context).pop(); // volta para o login
+      if (mounted) {
+        context.push(AppRoutes.verifyEmail, extra: {'email': email, 'nome': nome});
+      }
     }
   }
 

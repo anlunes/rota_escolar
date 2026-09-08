@@ -1,13 +1,14 @@
 <?php
 /**
  * POST /api/auth/send_verification.php
- * Body JSON: { "email": "usuario@email.com" }
+ * Body JSON: { "email": "usuario@email.com", "nome": "Nome" }
  *
- * Gera link de verificação via Firebase Admin e envia pelo servidor de hospedagem.
- * Chamado logo após o cadastro, antes de deslogar o usuário do Firebase.
+ * Gera código de 6 dígitos, salva no banco com expiração de 10 min
+ * e envia por e-mail pelo servidor de hospedagem.
+ * Não depende do Firebase Admin SDK — funciona igual ao forgot_password.
  */
 
-require_once __DIR__ . '/../../config/firebase_admin.php';
+require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 
 header('Content-Type: application/json');
@@ -27,17 +28,28 @@ if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
 }
 
 try {
-    $verificationLink = FirebaseAdmin::generateEmailVerificationLink($email);
-    $verificationLink = preg_replace('/([&?])lang=[^&]*/i', '$1', $verificationLink);
-    $verificationLink = rtrim($verificationLink, '?&');
+    $pdo = Database::getInstance();
 
-    $subject = '=?UTF-8?B?' . base64_encode('Confirme seu e-mail — Rota Escolar') . '?=';
+    // Remove códigos anteriores deste e-mail
+    $pdo->prepare("DELETE FROM email_verification_codes WHERE email = ?")->execute([$email]);
+
+    // Gera código de 6 dígitos
+    $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+    // Salva no banco com expiração de 10 minutos
+    $pdo->prepare(
+        "INSERT INTO email_verification_codes (email, code, expires_at, created_at)
+         VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), NOW())"
+    )->execute([$email, $code]);
+
+    // Envia e-mail com o código
+    $subject  = '=?UTF-8?B?' . base64_encode('Código de verificação — Rota Escolar') . '?=';
     $mensagem =
         "Olá, $nome!\n\n" .
         "Obrigado por se cadastrar no Rota Escolar.\n\n" .
-        "Clique no link abaixo para confirmar seu e-mail e ativar sua conta:\n\n" .
-        $verificationLink . "\n\n" .
-        "O link expira em 24 horas.\n\n" .
+        "Use o código abaixo no aplicativo para confirmar seu e-mail e ativar sua conta:\n\n" .
+        "        $code\n\n" .
+        "O código é válido por 10 minutos.\n\n" .
         "Se você não criou uma conta, ignore este e-mail.\n\n" .
         "Equipe Rota Escolar\n" .
         "https://rotaescolar.app.br";
@@ -52,9 +64,9 @@ try {
     $enviado = mail($email, $subject, $mensagem, $headers);
     error_log("[send_verification] Email " . ($enviado ? 'enviado' : 'FALHOU') . " para $email");
 
-    Response::success([], 'E-mail de verificação enviado.');
+    Response::success([], 'Código de verificação enviado.');
 
 } catch (Exception $e) {
     error_log("[send_verification] Erro: " . $e->getMessage());
-    Response::error('Não foi possível enviar o e-mail de verificação. Tente novamente.', 500);
+    Response::error('Não foi possível enviar o código. Tente novamente.', 500);
 }

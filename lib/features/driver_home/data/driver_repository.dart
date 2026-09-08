@@ -62,54 +62,27 @@ class DriverRepository {
     }
   }
 
-  /// Lista pagamentos do motorista para um mês/ano específico.
-  Future<Map<String, dynamic>> fetchPaymentsByMonth(int mes, int ano) async {
-    try {
-      final response = await _api.get(
-        ApiConstants.financialIndex,
-        queryParameters: {'mes': mes, 'ano': ano},
-      );
-      final data = response.data;
-      if (data is Map && data['success'] == true) {
-        final raw     = data['data'] as Map<String, dynamic>;
-        final list    = raw['mensalidades'] as List<dynamic>;
-        return {
-          'pendentes_geracao': raw['pendentes_geracao'] ?? 0,
-          'valor_servico':     raw['valor_servico'] ?? 0.0,
-          'mensalidades': list
-              .map((item) => _paymentFromJson(item as Map<String, dynamic>))
-              .toList(),
-        };
-      }
-      return {'pendentes_geracao': 0, 'valor_servico': 0.0, 'mensalidades': <PaymentRecord>[]};
-    } catch (e) {
-      debugPrint('[DriverRepository] fetchPaymentsByMonth error: $e');
-      return {'pendentes_geracao': 0, 'valor_servico': 0.0, 'mensalidades': <PaymentRecord>[]};
-    }
-  }
-
-  /// Alias usado no carregamento inicial (mês atual).
+  /// Lista pagamentos do motorista.
   Future<List<PaymentRecord>> fetchPayments() async {
-    final now = DateTime.now();
-    final result = await fetchPaymentsByMonth(now.month, now.year);
-    return result['mensalidades'] as List<PaymentRecord>;
-  }
-
-  /// Gera cobranças Asaas para o mês/ano informado.
-  Future<List<Map<String, dynamic>>> generateCharges(int mes, int ano) async {
     try {
-      final response = await _api.post(
-        ApiConstants.financialGenerate,
-        data: {'mes': mes, 'ano': ano},
-      );
+      final response = await _api.get(ApiConstants.financialIndex);
+
       final data = response.data;
+
+      debugPrint('[DriverRepository] PAYMENTS RESPONSE: $data');
+
       if (data is Map && data['success'] == true) {
-        return List<Map<String, dynamic>>.from(data['data'] ?? []);
+        final list = data['data'] as List<dynamic>;
+
+        return list
+            .map((item) => _paymentFromJson(item as Map<String, dynamic>))
+            .toList();
       }
-      final msg = data is Map ? (data['message'] ?? 'Erro ao gerar cobranças') : 'Erro';
-      throw Exception(msg);
-    } catch (e) {
-      debugPrint('[DriverRepository] generateCharges error: $e');
+
+      throw Exception('Resposta inválida da API');
+    } catch (e, stack) {
+      debugPrint('[DriverRepository] fetchPayments ERROR: $e');
+      debugPrint(stack.toString());
       rethrow;
     }
   }
@@ -184,13 +157,18 @@ class DriverRepository {
   }
 
   /// Marca mensalidade como paga em dinheiro.
-  Future<bool> markPayment(int mensalidadeId) async {
+  Future<bool> markPayment(String financialId) async {
     try {
       final response = await _api.post(
         ApiConstants.financialPay,
-        data: {'mensalidade_id': mensalidadeId},
+        data: {
+          'financial_id': financialId,
+          'method': 'cash',
+        },
       );
+
       final data = response.data;
+
       return data is Map && data['success'] == true;
     } catch (e) {
       debugPrint('[DriverRepository] markPayment error: $e');
@@ -261,19 +239,23 @@ class DriverRepository {
   }
 
   PaymentRecord _paymentFromJson(Map<String, dynamic> json) {
+    debugPrint('[DriverRepository] PARSING PAYMENT: $json');
+
     return PaymentRecord(
-      id:                   (json['id'] as num?)?.toInt() ?? 0,
-      studentName:          json['aluno_nome']?.toString()           ?? '',
-      responsavelNome:      json['responsavel_nome']?.toString()     ?? '',
-      responsavelWhatsapp:  json['responsavel_whatsapp']?.toString() ?? '',
-      mes:                  (json['mes'] as num?)?.toInt()           ?? 0,
-      ano:                  (json['ano'] as num?)?.toInt()           ?? 0,
-      amount:               double.tryParse(json['valor']?.toString() ?? '0') ?? 0.0,
-      status:               json['status']?.toString()        ?? 'pendente',
-      formaPagamento:       json['forma_pagamento']?.toString(),
-      asaasLink:            json['asaas_link']?.toString(),
-      dataVencimento:       json['data_vencimento']?.toString(),
-      dataPagamento:        json['data_pagamento']?.toString(),
+      studentName:
+          json['student_name']?.toString() ?? '',
+
+      month:
+          json['month']?.toString() ?? '',
+
+      amount:
+          double.tryParse(json['amount']?.toString() ?? '0') ?? 0.0,
+
+      paid:
+          int.tryParse(json['paid'].toString()) == 1,
+
+      paidInCash:
+          int.tryParse(json['paid_in_cash'].toString()) == 1,
     );
   }
 }

@@ -214,20 +214,16 @@ class AuthRepository {
         debugPrint('[AuthRepository] API register call failed, continuing: $e');
       }
 
-      // 5. Envia e-mail de verificação pelo nosso backend (remetente rotaescolar.app.br)
+      // 5. Envia código de verificação de 6 dígitos pelo nosso backend
       try {
         await _apiService.post(
           ApiConstants.authSendVerification,
           data: {'email': email, 'nome': name},
         );
-        debugPrint('[AuthRepository] Email verification sent via backend to $email');
+        debugPrint('[AuthRepository] Código de verificação enviado para $email');
       } catch (e) {
-        debugPrint('[AuthRepository] send_verification backend error: $e');
-        // Fallback: Firebase envia diretamente
-        try {
-          await _firebaseAuth?.setLanguageCode('pt-BR');
-          await fbUser.sendEmailVerification();
-        } catch (_) {}
+        debugPrint('[AuthRepository] send_verification error: $e');
+        // Continua mesmo assim — o usuário pode solicitar reenvio na tela de verificação
       }
 
       // 6. Desloga — app só acessa após confirmar o e-mail

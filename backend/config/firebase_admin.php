@@ -150,6 +150,71 @@ class FirebaseAdmin {
     }
 
     /**
+     * Busca o uid de um usuário pelo e-mail via Admin SDK.
+     * Retorna null se não encontrado.
+     */
+    public static function getUserUidByEmail(string $email): ?string {
+        $token = self::getAccessToken();
+
+        $ch = curl_init("https://identitytoolkit.googleapis.com/v1/accounts:lookup");
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                "Authorization: Bearer $token",
+            ],
+            CURLOPT_POSTFIELDS => json_encode(['email' => [$email]]),
+        ]);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $data = json_decode($response, true);
+        error_log("[FirebaseAdmin] getUserUidByEmail HTTP $httpCode email=$email");
+
+        if ($httpCode !== 200 || empty($data['users'][0]['localId'])) {
+            return null;
+        }
+
+        return $data['users'][0]['localId'];
+    }
+
+    /**
+     * Marca o e-mail de um usuário como verificado via Admin SDK.
+     */
+    public static function markEmailVerified(string $uid): void {
+        $token = self::getAccessToken();
+
+        $ch = curl_init("https://identitytoolkit.googleapis.com/v1/accounts:update");
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                "Authorization: Bearer $token",
+            ],
+            CURLOPT_POSTFIELDS => json_encode([
+                'localId'       => $uid,
+                'emailVerified' => true,
+            ]),
+        ]);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $data = json_decode($response, true);
+        error_log("[FirebaseAdmin] markEmailVerified HTTP $httpCode uid=$uid");
+
+        if ($httpCode !== 200 || empty($data['localId'])) {
+            $msg = $data['error']['message'] ?? "HTTP $httpCode: $response";
+            throw new Exception($msg);
+        }
+    }
+
+    /**
      * Atualiza a senha de um usuário diretamente via Admin SDK.
      */
     public static function updateUserPassword(string $uid, string $newPassword): void {

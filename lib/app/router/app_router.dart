@@ -11,6 +11,7 @@ import '../../features/driver_home/presentation/pages/driver_home_page.dart';
 import '../../features/guardian_home/presentation/pages/guardian_home_page.dart';
 import '../../features/faq/presentation/pages/faq_page.dart';
 import '../../features/auth/presentation/pages/reset_code_page.dart';
+import '../../features/auth/presentation/pages/verify_email_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_page.dart';
 import '../../app/core/constants/status_constants.dart';
 
@@ -43,6 +44,7 @@ class AppRoutes {
   static const onboarding = '/onboarding';
   static const faq = '/faq';
   static const resetCode = '/reset-code';
+  static const verifyEmail = '/verify-email';
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +89,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isPublicRoute = loc == AppRoutes.splash ||
           loc == AppRoutes.login ||
           loc == AppRoutes.register ||
-          loc == AppRoutes.resetCode;
+          loc == AppRoutes.resetCode ||
+          loc == AppRoutes.verifyEmail;
 
       if (!isAuthenticated && !isPublicRoute) {
         return AppRoutes.login;
@@ -174,6 +177,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final email = state.extra as String? ?? '';
           return ResetCodePage(email: email);
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.verifyEmail,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, String>? ?? {};
+          return VerifyEmailPage(
+            email: extra['email'] ?? '',
+            nome: extra['nome'] ?? '',
+          );
         },
       ),
     ],

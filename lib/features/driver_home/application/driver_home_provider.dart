@@ -12,37 +12,19 @@ import '../../../../app/core/services/rtdb_service.dart';
 // ---------------------------------------------------------------------------
 
 class PaymentRecord {
-  final int    id;
   final String studentName;
-  final String responsavelNome;
-  final String responsavelWhatsapp;
-  final int    mes;
-  final int    ano;
+  final String month;
   final double amount;
-  final String status;          // pendente | pago | atrasado | cancelado
-  final String? formaPagamento; // asaas | dinheiro
-  final String? asaasLink;
-  final String? dataVencimento;
-  final String? dataPagamento;
+  final bool paid;
+  final bool paidInCash;
 
   const PaymentRecord({
-    required this.id,
     required this.studentName,
-    required this.responsavelNome,
-    required this.responsavelWhatsapp,
-    required this.mes,
-    required this.ano,
+    required this.month,
     required this.amount,
-    required this.status,
-    this.formaPagamento,
-    this.asaasLink,
-    this.dataVencimento,
-    this.dataPagamento,
+    required this.paid,
+    this.paidInCash = false,
   });
-
-  bool get paid       => status == 'pago';
-  bool get atrasado   => status == 'atrasado';
-  bool get paidInCash => formaPagamento == 'dinheiro';
 }
 
 // ---------------------------------------------------------------------------
@@ -338,29 +320,20 @@ class DriverHomeNotifier extends StateNotifier<DriverHomeState> {
     state = state.copyWith(students: updated);
   }
 
-  void markPaymentCash(int mensalidadeId) {
-    final list = state.payments.map((p) {
-      if (p.id == mensalidadeId) {
-        return PaymentRecord(
-          id: p.id,
-          studentName: p.studentName,
-          responsavelNome: p.responsavelNome,
-          responsavelWhatsapp: p.responsavelWhatsapp,
-          mes: p.mes,
-          ano: p.ano,
-          amount: p.amount,
-          status: 'pago',
-          formaPagamento: 'dinheiro',
-          asaasLink: p.asaasLink,
-          dataVencimento: p.dataVencimento,
-          dataPagamento: DateTime.now().toIso8601String().substring(0, 10),
-        );
-      }
-      return p;
-    }).toList();
+  void markPaymentCash(int index) {
+    final list = List<PaymentRecord>.from(state.payments);
+    final p = list[index];
+    list[index] = PaymentRecord(
+      studentName: p.studentName,
+      month: p.month,
+      amount: p.amount,
+      paid: true,
+      paidInCash: true,
+    );
     state = state.copyWith(payments: list);
 
-    _repository.markPayment(mensalidadeId).catchError((_) => false);
+    // Persist to API (fire and forget)
+    _repository.markPayment('payment_$index').catchError((_) => false);
   }
 
   Future<void> acceptOpportunity(String id) async {
