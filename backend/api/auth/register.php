@@ -36,14 +36,14 @@ if (!in_array($role, $allowedRoles, true)) {
 try {
     $pdo = Database::getInstance();
 
-    $stmt = $pdo->prepare('SELECT usuario_id FROM usuarios WHERE uid = ? OR email = ? LIMIT 1');
+    $stmt = $pdo->prepare('SELECT id FROM usuarios WHERE uid = ? OR email = ? LIMIT 1');
     $stmt->execute([$uid, $email]);
     $user = $stmt->fetch();
 
     if ($user) {
-        $pdo->prepare('UPDATE usuarios SET uid=?, nome=?, email=?, telefone=?, role=?, updated_at=NOW() WHERE usuario_id=?')
-            ->execute([$uid, $name, $email, $whatsapp, $role, $user['usuario_id']]);
-        $usuarioId = $user['usuario_id'];
+        $pdo->prepare('UPDATE usuarios SET uid=?, nome=?, email=?, telefone=?, role=?, updated_at=NOW() WHERE id=?')
+            ->execute([$uid, $name, $email, $whatsapp, $role, $user['id']]);
+        $usuarioId = $user['id'];
     } else {
         $pdo->prepare('INSERT INTO usuarios (uid, nome, email, telefone, role, created_at) VALUES (?,?,?,?,?,NOW())')
             ->execute([$uid, $name, $email, $whatsapp, $role]);
