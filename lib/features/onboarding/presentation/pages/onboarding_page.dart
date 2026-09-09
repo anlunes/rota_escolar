@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/router/app_router.dart';
 import '../../data/onboarding_repository.dart';
+import '../../../../app/core/utils/cpf_validator.dart';
 
 // ---------------------------------------------------------------------------
 // CPF formatter: 000.000.000-00
@@ -177,11 +178,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                   hint: '000.000.000-00',
                   keyboardType: TextInputType.number,
                   formatters: [_CpfFormatter()],
-                  validator: (v) {
-                    final d = (v ?? '').replaceAll(RegExp(r'\D'), '');
-                    if (d.length != 11) return 'CPF inválido.';
-                    return null;
-                  },
+                  validator: validateCpf,
                 ),
 
                 const SizedBox(height: 20),

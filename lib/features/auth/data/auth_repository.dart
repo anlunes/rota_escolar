@@ -170,6 +170,22 @@ class AuthRepository {
     }
 
     try {
+      // 0. Verifica disponibilidade do WhatsApp antes de criar conta no Firebase
+      final whatsappDigits = whatsapp.replaceAll(RegExp(r'\D'), '');
+      try {
+        final checkResp = await _apiService.get(
+          '${ApiConstants.authCheckAvailability}?whatsapp=$whatsappDigits',
+        );
+        final available = checkResp.data?['available'] ?? true;
+        if (available == false) {
+          throw Exception('WhatsApp já cadastrado.');
+        }
+      } catch (e) {
+        if (e.toString().contains('WhatsApp já cadastrado')) rethrow;
+        // Se o endpoint falhar por outro motivo, continua o cadastro
+        debugPrint('[AuthRepository] check_availability error: $e');
+      }
+
       // 1. Cria usuário no Firebase Auth
       final credential = await _firebaseAuth?.createUserWithEmailAndPassword(
         email: email,

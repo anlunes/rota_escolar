@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../../app/core/constants/api_constants.dart';
+import '../../../../app/core/utils/cpf_validator.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../location/data/location_repository.dart';
 import '../../../location/domain/models/bairro.dart';
@@ -600,6 +601,19 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
 
   Future<void> _saveProfile() async {
     if (_savingProfile) return;
+
+    // Valida CPF se preenchido
+    final cpfRaw = _cpfController.text.replaceAll(RegExp(r'\D'), '');
+    if (cpfRaw.isNotEmpty) {
+      final cpfError = validateCpf(_cpfController.text);
+      if (cpfError != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(cpfError), backgroundColor: AppColors.error),
+        );
+        return;
+      }
+    }
+
     setState(() => _savingProfile = true);
     try {
       await _saveBairros();

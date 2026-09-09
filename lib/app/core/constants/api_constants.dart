@@ -19,8 +19,9 @@ class ApiConstants {
   }
 
   // Endpoints
-  static const String authRegister          = '/api/auth/register.php';
-  static const String authProfile           = '/api/auth/profile.php';
+  static const String authRegister           = '/api/auth/register.php';
+  static const String authProfile            = '/api/auth/profile.php';
+  static const String authCheckAvailability  = '/api/auth/check_availability.php';
   static const String authForgotPassword    = '/api/auth/forgot_password.php';
   static const String authVerifyResetCode   = '/api/auth/verify_reset_code.php';
   static const String authSendVerification  = '/api/auth/send_verification.php';
