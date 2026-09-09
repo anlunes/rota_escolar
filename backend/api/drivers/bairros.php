@@ -114,6 +114,15 @@ try {
 
         if (!is_array($bairroIds)) Response::error('bairro_ids deve ser um array.', 400);
 
+        // Verifica CPF duplicado antes de abrir transação
+        if ($cpf !== null) {
+            $cpfCheck = $pdo->prepare("SELECT motorista_id FROM motoristas WHERE cpf = ? AND motorista_id != ? LIMIT 1");
+            $cpfCheck->execute([$cpf, $motoristaId]);
+            if ($cpfCheck->fetch()) {
+                Response::error('CPF já pertence a outra conta.', 409);
+            }
+        }
+
         $pdo->beginTransaction();
 
         // Remove bairros antigos e insere novos
