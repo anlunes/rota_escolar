@@ -21,6 +21,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao   = $_POST['acao']   ?? '';
     $tabela = $_POST['tabela'] ?? '';
 
+    if ($id && $tabela === 'cnh') {
+        $pdo = Database::getInstance();
+        if ($acao === 'aprovar') {
+            $pdo->prepare("UPDATE motoristas SET cnh_ocr_verificado = 1, updated_at = NOW() WHERE motorista_id = ?")
+                ->execute([$id]);
+        } elseif ($acao === 'rejeitar') {
+            // Remove a CNH e zera o flag para o motorista ter que reenviar
+            $pdo->prepare("UPDATE motoristas SET cnh_url = NULL, cnh_ocr_verificado = 0, updated_at = NOW() WHERE motorista_id = ?")
+                ->execute([$id]);
+        }
+        header('Location: index.php');
+        exit;
+    }
+
     if ($id && in_array($acao, ['aprovar', 'rejeitar', 'aprovar_coords'])) {
         $pdo = Database::getInstance();
 
@@ -153,6 +167,22 @@ try {
     ")->fetchAll();
 } catch (Throwable $e) {
     $orcamentosPendentes = [];
+}
+
+// CNH enviadas por foto (OCR não verificou CPF — revisão manual)
+try {
+    $cnhPendentes = $pdo->query("
+        SELECT m.motorista_id, u.nome, m.cnh_url, m.cpf,
+               m.email, m.telefone, m.created_at
+        FROM motoristas m
+        JOIN usuarios u ON u.uid = m.uid
+        WHERE m.cnh_ocr_verificado = 0
+          AND m.cnh_url IS NOT NULL
+          AND m.cnh_url != ''
+        ORDER BY m.created_at DESC
+    ")->fetchAll();
+} catch (Throwable $e) {
+    $cnhPendentes = [];
 }
 
 // Escolas não encontradas pelo script (revisão manual com Street View)
@@ -403,6 +433,75 @@ try {
                   <input type="hidden" name="id"     value="<?= $b['id'] ?>">
                   <input type="hidden" name="acao"   value="rejeitar">
                   <input type="hidden" name="tabela" value="bairros">
+                  <button class="btn-rejeitar" type="submit">✕ Rejeitar</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    <?php endif; ?>
+  </div>
+
+  <!-- CNH pendentes de revisão manual -->
+  <div class="section">
+    <div class="section-title">
+      CNH — Revisão Manual de CPF
+      <?php if (!empty($cnhPendentes)): ?>
+        <span class="badge" style="background:#e67e22"><?= count($cnhPendentes) ?></span>
+      <?php endif; ?>
+    </div>
+    <p style="font-size:.85rem;color:#666;margin-bottom:12px">
+      Motoristas que enviaram a CNH por foto (não PDF). O OCR não conseguiu verificar o CPF automaticamente — revise a imagem e o CPF informado.
+    </p>
+
+    <?php if (empty($cnhPendentes)): ?>
+      <p class="empty">Nenhuma CNH aguardando revisão.</p>
+    <?php else: ?>
+      <table>
+        <thead>
+          <tr><th>Motorista</th><th>CPF informado</th><th>CNH</th><th>Ações</th></tr>
+        </thead>
+        <tbody>
+          <?php foreach ($cnhPendentes as $c): ?>
+          <?php
+            $cpfFormatado = '';
+            $cpfRaw = preg_replace('/\D/', '', $c['cpf'] ?? '');
+            if (strlen($cpfRaw) === 11) {
+                $cpfFormatado = substr($cpfRaw,0,3).'.'.substr($cpfRaw,3,3).'.'.substr($cpfRaw,6,3).'-'.substr($cpfRaw,9,2);
+            } else {
+                $cpfFormatado = $c['cpf'] ? htmlspecialchars($c['cpf']) : '<em style="color:#aaa">Não informado</em>';
+            }
+          ?>
+          <tr>
+            <td>
+              <strong><?= htmlspecialchars($c['nome']) ?></strong><br>
+              <small style="color:#888"><?= htmlspecialchars($c['email'] ?? '') ?></small>
+            </td>
+            <td><?= $cpfFormatado ?></td>
+            <td>
+              <?php if ($c['cnh_url']): ?>
+                <a href="<?= htmlspecialchars($c['cnh_url']) ?>" target="_blank"
+                   style="color:#2980b9;font-size:.85rem">🔍 Ver CNH</a>
+              <?php else: ?>
+                <em style="color:#aaa">Sem arquivo</em>
+              <?php endif; ?>
+            </td>
+            <td>
+              <div class="actions">
+                <form method="POST" style="display:inline"
+                      onsubmit="return confirm('Confirmar que o CPF da CNH está correto?')">
+                  <input type="hidden" name="id"     value="<?= $c['motorista_id'] ?>">
+                  <input type="hidden" name="acao"   value="aprovar">
+                  <input type="hidden" name="tabela" value="cnh">
+                  <button class="btn-aprovar" type="submit">✓ CPF OK</button>
+                </form>
+                <form method="POST" style="display:inline"
+                      onsubmit="return confirm('Rejeitar CNH? O motorista terá que reenviar o documento.')">
+                  <input type="hidden" name="id"     value="<?= $c['motorista_id'] ?>">
+                  <input type="hidden" name="acao"   value="rejeitar">
+                  <input type="hidden" name="tabela" value="cnh">
                   <button class="btn-rejeitar" type="submit">✕ Rejeitar</button>
                 </form>
               </div>

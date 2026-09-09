@@ -112,6 +112,69 @@ if (!is_dir($dir_dest)) {
     }
 }
 
+// --- OCR da CNH: extrai e verifica CPF ---
+$cpf_extraido      = null;
+$cnh_ocr_verificado = 0;
+
+if ($tipo === 'cnh') {
+    $ocr_tmp = $dir_dest . '/cnh_ocr_tmp.png';
+    $ocr_ok  = false;
+
+    if ($mime === 'application/pdf') {
+        // PDF oficial (Carteira Digital de Trânsito): renderiza a 200 DPI para OCR
+        $cmd = "convert -density 200 " . escapeshellarg($arquivo['tmp_name']) . "[0] -background white -flatten " . escapeshellarg($ocr_tmp) . " 2>&1";
+        shell_exec($cmd);
+        $ocr_ok = file_exists($ocr_tmp);
+    } else {
+        copy($arquivo['tmp_name'], $ocr_tmp);
+        $ocr_ok = true;
+    }
+
+    if ($ocr_ok) {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => 'https://api.ocr.space/parse/image',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => [
+                'apikey'   => 'K88171630188957',
+                'language' => 'por',
+                'isTable'  => 'false',
+                'file'     => new CURLFile($ocr_tmp, 'image/png', 'cnh.png'),
+            ],
+            CURLOPT_TIMEOUT => 30,
+        ]);
+        $ocr_response = curl_exec($ch);
+        curl_close($ch);
+        @unlink($ocr_tmp);
+
+        if ($ocr_response) {
+            $ocr_data = json_decode($ocr_response, true);
+            $texto = $ocr_data['ParsedResults'][0]['ParsedText'] ?? '';
+            error_log('[upload/foto_cnh] OCR texto: ' . substr($texto, 0, 500));
+
+            // Tenta extrair CPF próximo ao label "CPF"
+            if (preg_match('/CPF\s*[:\-]?\s*(\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[\-\.\s]?\d{2})/ui', $texto, $m)) {
+                $cpf_extraido = preg_replace('/\D/', '', $m[1]);
+            }
+            // Fallback: qualquer sequência no formato 000.000.000-00 ou 00000000000
+            if (!$cpf_extraido && preg_match('/\b(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b/', $texto, $m)) {
+                $cpf_extraido = preg_replace('/\D/', '', $m[1]);
+            }
+
+            if ($cpf_extraido && strlen($cpf_extraido) === 11) {
+                error_log("[upload/foto_cnh] CPF extraído: $cpf_extraido");
+            } else {
+                $cpf_extraido = null;
+                error_log('[upload/foto_cnh] CPF não extraído do OCR.');
+            }
+        }
+    } else {
+        @unlink($ocr_tmp);
+        error_log('[upload/foto_cnh] OCR tmp não criado.');
+    }
+}
+
 // --- Converte para WEBP usando GD/ImageMagick ---
 if ($mime === 'application/pdf') {
     if ($tipo === 'cnh') {
@@ -199,24 +262,58 @@ try {
     $pdo = Database::getInstance();
 
     if ($referencia === 'motorista') {
-        $coluna = null;
-        switch ($tipo) {
-            case 'cnh':        $coluna = 'cnh_url';          break;
-            case 'crlv':       $coluna = 'crlv_url';         break;
-            case 'perfil':     $coluna = 'foto_url';         break;
-            case 'app':        $coluna = 'seguro_url';       break;
-            case 'autorizacao': $coluna = 'autorizacao_url'; break;
-        }
-        if ($coluna) {
-            $stmt = $pdo->prepare("UPDATE motoristas SET $coluna = ?, updated_at = NOW() WHERE uid = ?");
-            $stmt->execute([$url_publica, $referencia_id]);
+        if ($tipo === 'cnh') {
+            // Busca motorista e CPF salvo
+            $mRow = $pdo->prepare("SELECT motorista_id, cpf FROM motoristas WHERE uid = ? LIMIT 1");
+            $mRow->execute([$referencia_id]);
+            $motorista = $mRow->fetch();
+
+            if ($motorista) {
+                $cpf_salvo = $motorista['cpf'] ? preg_replace('/\D/', '', $motorista['cpf']) : null;
+
+                if ($cpf_extraido) {
+                    if ($cpf_salvo && $cpf_salvo !== $cpf_extraido) {
+                        // CPF da CNH diverge do CPF informado no perfil — bloqueia
+                        Response::error('CPF da CNH não confere com o CPF informado no perfil. Verifique e corrija antes de enviar o documento.', 422);
+                    }
+
+                    if (!$cpf_salvo) {
+                        // Motorista ainda não preencheu CPF — preenche automaticamente com o da CNH
+                        $pdo->prepare("UPDATE motoristas SET cpf = ?, updated_at = NOW() WHERE motorista_id = ?")
+                            ->execute([$cpf_extraido, $motorista['motorista_id']]);
+                    }
+
+                    $cnh_ocr_verificado = 1;
+                }
+                // Se OCR não extraiu CPF: cnh_ocr_verificado permanece 0 (foto para revisão)
+
+                $pdo->prepare("
+                    UPDATE motoristas
+                    SET cnh_url = ?, cnh_ocr_verificado = ?, updated_at = NOW()
+                    WHERE motorista_id = ?
+                ")->execute([$url_publica, $cnh_ocr_verificado, $motorista['motorista_id']]);
+            }
+        } else {
+            $coluna = null;
+            switch ($tipo) {
+                case 'crlv':        $coluna = 'crlv_url';        break;
+                case 'perfil':      $coluna = 'foto_url';        break;
+                case 'app':         $coluna = 'seguro_url';      break;
+                case 'autorizacao': $coluna = 'autorizacao_url'; break;
+            }
+            if ($coluna) {
+                $pdo->prepare("UPDATE motoristas SET $coluna = ?, updated_at = NOW() WHERE uid = ?")
+                    ->execute([$url_publica, $referencia_id]);
+            }
         }
     }
 } catch (PDOException $e) {
-    error_log('[upload/foto] DB error: ' . $e->getMessage());
+    error_log('[upload/foto_cnh] DB error: ' . $e->getMessage());
 }
 
 Response::success([
-    'url'  => $url_publica,
-    'tipo' => $tipo,
+    'url'               => $url_publica,
+    'tipo'              => $tipo,
+    'cpf_extraido'      => $cpf_extraido,
+    'cnh_ocr_verificado' => $cnh_ocr_verificado === 1,
 ]);

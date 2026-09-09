@@ -272,6 +272,18 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
               if (placa  != null && placa.isNotEmpty)  _veiculoPlaca  = placa;
               if (modelo != null && modelo.isNotEmpty) _veiculoModelo = modelo;
             }
+            // Preenche CPF automaticamente se extraído do OCR da CNH e campo ainda vazio
+            if (tipo == 'cnh') {
+              final cpfExtraido = response.data['cpf_extraido']?.toString();
+              if (cpfExtraido != null && cpfExtraido.isNotEmpty && _cpfController.text.isEmpty) {
+                // Formata CPF para exibição: 000.000.000-00
+                final d = cpfExtraido.replaceAll(RegExp(r'\D'), '');
+                if (d.length == 11) {
+                  _cpfController.text =
+                      '${d.substring(0, 3)}.${d.substring(3, 6)}.${d.substring(6, 9)}-${d.substring(9, 11)}';
+                }
+              }
+            }
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
