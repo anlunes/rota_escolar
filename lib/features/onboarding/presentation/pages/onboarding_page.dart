@@ -1,38 +1,54 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/router/app_router.dart';
-import '../../../../features/location/data/location_repository.dart';
-import '../../../../features/location/domain/models/estado.dart';
-import '../../../../features/location/domain/models/municipio.dart';
-import '../../../../features/location/domain/models/bairro.dart';
 import '../../data/onboarding_repository.dart';
 
 // ---------------------------------------------------------------------------
-// Providers locais de localização para o onboarding
+// CPF formatter: 000.000.000-00
 // ---------------------------------------------------------------------------
 
-final _estadosProvider = FutureProvider<List<Estado>>((ref) {
-  return LocationRepository().fetchEstados();
-});
+class _CpfFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue _, TextEditingValue next) {
+    final digits = next.text.replaceAll(RegExp(r'\D'), '');
+    final buf = StringBuffer();
+    for (int i = 0; i < digits.length && i < 11; i++) {
+      if (i == 3 || i == 6) buf.write('.');
+      if (i == 9) buf.write('-');
+      buf.write(digits[i]);
+    }
+    final str = buf.toString();
+    return next.copyWith(
+      text: str,
+      selection: TextSelection.collapsed(offset: str.length),
+    );
+  }
+}
 
-final _selectedEstadoProvider = StateProvider<Estado?>((ref) => null);
-final _selectedMunicipioProvider = StateProvider<Municipio?>((ref) => null);
-final _selectedBairroProvider = StateProvider<Bairro?>((ref) => null);
+// ---------------------------------------------------------------------------
+// CEP formatter: 00000-000
+// ---------------------------------------------------------------------------
 
-final _municipiosProvider = FutureProvider<List<Municipio>>((ref) {
-  final estado = ref.watch(_selectedEstadoProvider);
-  if (estado == null) return Future.value([]);
-  return LocationRepository().fetchMunicipios(estado.id);
-});
-
-final _bairrosProvider = FutureProvider<List<Bairro>>((ref) {
-  final municipio = ref.watch(_selectedMunicipioProvider);
-  if (municipio == null) return Future.value([]);
-  return LocationRepository().fetchBairros(municipio.id);
-});
+class _CepFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue _, TextEditingValue next) {
+    final digits = next.text.replaceAll(RegExp(r'\D'), '');
+    final buf = StringBuffer();
+    for (int i = 0; i < digits.length && i < 8; i++) {
+      if (i == 5) buf.write('-');
+      buf.write(digits[i]);
+    }
+    final str = buf.toString();
+    return next.copyWith(
+      text: str,
+      selection: TextSelection.collapsed(offset: str.length),
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // OnboardingPage
@@ -47,34 +63,81 @@ class OnboardingPage extends ConsumerStatefulWidget {
 
 class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   final _formKey = GlobalKey<FormState>();
-  final _telefoneCtrl = TextEditingController();
+
+  final _cpfCtrl        = TextEditingController();
+  final _cepCtrl        = TextEditingController();
+  final _logradouroCtrl = TextEditingController();
+  final _bairroCtrl     = TextEditingController();
+  final _cidadeCtrl     = TextEditingController();
+  final _estadoCtrl     = TextEditingController();
+  final _numeroCtrl     = TextEditingController();
+  final _complementoCtrl = TextEditingController();
+
+  bool _isLoadingCep = false;
+  String? _cepError;
   bool _saving = false;
   String? _errorMsg;
 
   @override
   void dispose() {
-    _telefoneCtrl.dispose();
+    _cpfCtrl.dispose();
+    _cepCtrl.dispose();
+    _logradouroCtrl.dispose();
+    _bairroCtrl.dispose();
+    _cidadeCtrl.dispose();
+    _estadoCtrl.dispose();
+    _numeroCtrl.dispose();
+    _complementoCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _lookupCep(String value) async {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length != 8) return;
+
+    setState(() { _isLoadingCep = true; _cepError = null; });
+
+    try {
+      final response = await Dio().get('https://viacep.com.br/ws/$digits/json/');
+      final data = response.data as Map<String, dynamic>;
+
+      if (data['erro'] == true) {
+        setState(() => _cepError = 'CEP não encontrado.');
+        return;
+      }
+
+      setState(() {
+        _logradouroCtrl.text = data['logradouro'] ?? '';
+        _bairroCtrl.text     = data['bairro']     ?? '';
+        _cidadeCtrl.text     = data['localidade'] ?? '';
+        _estadoCtrl.text     = data['uf']         ?? '';
+      });
+    } catch (_) {
+      setState(() => _cepError = 'Não foi possível consultar o CEP.');
+    } finally {
+      if (mounted) setState(() => _isLoadingCep = false);
+    }
   }
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-
-    final bairro = ref.read(_selectedBairroProvider);
-    if (bairro == null) {
-      setState(() => _errorMsg = 'Selecione seu bairro.');
-      return;
-    }
+    if (_cepError != null) return;
 
     setState(() { _saving = true; _errorMsg = null; });
 
     try {
       await ref.read(onboardingRepositoryProvider).saveProfile(
-        telefone: _telefoneCtrl.text.trim(),
-        bairroId: bairro.id,
+        cpf:        _cpfCtrl.text.trim(),
+        cep:        _cepCtrl.text.trim(),
+        logradouro: _logradouroCtrl.text.trim(),
+        numero:     _numeroCtrl.text.trim(),
+        complemento: _complementoCtrl.text.trim().isEmpty ? null : _complementoCtrl.text.trim(),
+        bairroNome: _bairroCtrl.text.trim(),
+        cidade:     _cidadeCtrl.text.trim(),
+        estadoUf:   _estadoCtrl.text.trim(),
       );
       if (mounted) context.go(AppRoutes.guardianHome);
-    } catch (e) {
+    } catch (_) {
       setState(() => _errorMsg = 'Não foi possível salvar. Tente novamente.');
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -103,11 +166,121 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 8),
-                _Header(),
-                const SizedBox(height: 32),
-                _PhoneField(controller: _telefoneCtrl),
+                _buildHeader(),
+                const SizedBox(height: 28),
+
+                // CPF
+                _buildLabel('CPF'),
+                const SizedBox(height: 6),
+                _buildTextInput(
+                  controller: _cpfCtrl,
+                  hint: '000.000.000-00',
+                  keyboardType: TextInputType.number,
+                  formatters: [_CpfFormatter()],
+                  validator: (v) {
+                    final d = (v ?? '').replaceAll(RegExp(r'\D'), '');
+                    if (d.length != 11) return 'CPF inválido.';
+                    return null;
+                  },
+                ),
+
                 const SizedBox(height: 20),
-                _LocationSection(),
+
+                // CEP
+                _buildLabel('CEP'),
+                const SizedBox(height: 6),
+                _buildCepField(),
+                if (_cepError != null) ...[
+                  const SizedBox(height: 4),
+                  Text(_cepError!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                ],
+
+                const SizedBox(height: 20),
+
+                // Logradouro (readonly)
+                _buildLabel('Logradouro'),
+                const SizedBox(height: 6),
+                _buildReadonlyInput(controller: _logradouroCtrl, hint: 'Preenchido pelo CEP'),
+
+                const SizedBox(height: 16),
+
+                // Bairro (readonly) + Estado (readonly) em linha
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildLabel('Bairro'),
+                          const SizedBox(height: 6),
+                          _buildReadonlyInput(controller: _bairroCtrl, hint: 'Bairro'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 1,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildLabel('UF'),
+                          const SizedBox(height: 6),
+                          _buildReadonlyInput(controller: _estadoCtrl, hint: 'UF'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Cidade (readonly)
+                _buildLabel('Cidade'),
+                const SizedBox(height: 6),
+                _buildReadonlyInput(controller: _cidadeCtrl, hint: 'Cidade'),
+
+                const SizedBox(height: 20),
+
+                // Número + Complemento em linha
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildLabel('Número'),
+                          const SizedBox(height: 6),
+                          _buildTextInput(
+                            controller: _numeroCtrl,
+                            hint: 'Ex: 123',
+                            keyboardType: TextInputType.text,
+                            validator: (v) =>
+                                (v ?? '').trim().isEmpty ? 'Obrigatório.' : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildLabel('Complemento'),
+                          const SizedBox(height: 6),
+                          _buildTextInput(
+                            controller: _complementoCtrl,
+                            hint: 'Apto, Bloco... (opcional)',
+                            keyboardType: TextInputType.text,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
                 if (_errorMsg != null) ...[
                   const SizedBox(height: 16),
                   Container(
@@ -123,6 +296,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                     ),
                   ),
                 ],
+
                 const SizedBox(height: 32),
                 ElevatedButton(
                   onPressed: _saving ? null : _save,
@@ -130,9 +304,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                     backgroundColor: AppColors.primary,
                     foregroundColor: AppColors.text,
                     minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
                   child: _saving
@@ -154,15 +326,12 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       ),
     );
   }
-}
 
-// ---------------------------------------------------------------------------
-// Header
-// ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Widgets auxiliares
+  // ---------------------------------------------------------------------------
 
-class _Header extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildHeader() {
     return Column(
       children: [
         Container(
@@ -177,11 +346,7 @@ class _Header extends StatelessWidget {
         const SizedBox(height: 20),
         const Text(
           'Complete seu perfil',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: AppColors.text,
-          ),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.text),
         ),
         const SizedBox(height: 8),
         const Text(
@@ -192,234 +357,117 @@ class _Header extends StatelessWidget {
       ],
     );
   }
-}
 
-// ---------------------------------------------------------------------------
-// Campo de telefone
-// ---------------------------------------------------------------------------
-
-class _PhoneField extends StatelessWidget {
-  final TextEditingController controller;
-  const _PhoneField({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'WhatsApp / Telefone',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text),
-        ),
-        const SizedBox(height: 6),
-        TextFormField(
-          controller: controller,
-          keyboardType: TextInputType.phone,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          maxLength: 11,
-          decoration: InputDecoration(
-            hintText: 'Ex: 21999999999',
-            counterText: '',
-            prefixIcon: const Icon(Icons.phone_outlined, size: 20),
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: AppColors.primaryDark, width: 1.5),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-          ),
-          validator: (v) {
-            final digits = (v ?? '').replaceAll(RegExp(r'\D'), '');
-            if (digits.length < 10) return 'Informe um número válido (DDD + número).';
-            return null;
-          },
-        ),
-      ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Seção de localização: Estado → Município → Bairro
-// ---------------------------------------------------------------------------
-
-class _LocationSection extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final estadosAsync  = ref.watch(_estadosProvider);
-    final municipiosAsync = ref.watch(_municipiosProvider);
-    final bairrosAsync  = ref.watch(_bairrosProvider);
-
-    final selectedEstado   = ref.watch(_selectedEstadoProvider);
-    final selectedMunicipio = ref.watch(_selectedMunicipioProvider);
-    final selectedBairro   = ref.watch(_selectedBairroProvider);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Estado
-        const Text(
-          'Estado',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text),
-        ),
-        const SizedBox(height: 6),
-        estadosAsync.when(
-          loading: () => loadingDropdown('Carregando estados...'),
-          error: (err, _) => errorDropdown('Erro ao carregar estados'),
-          data: (estados) => buildDropdown<Estado>(
-            hint: 'Selecione o estado',
-            value: selectedEstado,
-            items: estados,
-            label: (e) => '${e.uf} — ${e.nome}',
-            onChanged: (e) {
-              ref.read(_selectedEstadoProvider.notifier).state = e;
-              ref.read(_selectedMunicipioProvider.notifier).state = null;
-              ref.read(_selectedBairroProvider.notifier).state = null;
-            },
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Município
-        const Text(
-          'Município',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text),
-        ),
-        const SizedBox(height: 6),
-        if (selectedEstado == null)
-          disabledDropdown('Selecione o estado primeiro')
-        else
-          municipiosAsync.when(
-            loading: () => loadingDropdown('Carregando municípios...'),
-            error: (err, _) => errorDropdown('Erro ao carregar municípios'),
-            data: (municipios) => buildDropdown<Municipio>(
-              hint: 'Selecione o município',
-              value: selectedMunicipio,
-              items: municipios,
-              label: (m) => m.nome,
-              onChanged: (m) {
-                ref.read(_selectedMunicipioProvider.notifier).state = m;
-                ref.read(_selectedBairroProvider.notifier).state = null;
-              },
-            ),
-          ),
-
-        const SizedBox(height: 16),
-
-        // Bairro
-        const Text(
-          'Bairro',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text),
-        ),
-        const SizedBox(height: 6),
-        if (selectedMunicipio == null)
-          disabledDropdown('Selecione o município primeiro')
-        else
-          bairrosAsync.when(
-            loading: () => loadingDropdown('Carregando bairros...'),
-            error: (err, _) => errorDropdown('Erro ao carregar bairros'),
-            data: (bairros) {
-              if (bairros.isEmpty) {
-                return disabledDropdown('Nenhum bairro cadastrado neste município');
-              }
-              return buildDropdown<Bairro>(
-                hint: 'Selecione seu bairro',
-                value: selectedBairro,
-                items: bairros,
-                label: (b) => b.nome,
-                onChanged: (b) {
-                  ref.read(_selectedBairroProvider.notifier).state = b;
-                },
-              );
-            },
-          ),
-      ],
+  Widget _buildLabel(String label) {
+    return Text(
+      label,
+      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text),
     );
   }
 
-  Widget buildDropdown<T>({
+  Widget _buildCepField() {
+    return TextFormField(
+      controller: _cepCtrl,
+      keyboardType: TextInputType.number,
+      inputFormatters: [_CepFormatter()],
+      decoration: InputDecoration(
+        hintText: '00000-000',
+        filled: true,
+        fillColor: Colors.white,
+        suffixIcon: _isLoadingCep
+            ? const Padding(
+                padding: EdgeInsets.all(12),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : const Icon(Icons.search, size: 20),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.primaryDark, width: 1.5),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      ),
+      onChanged: (v) {
+        final digits = v.replaceAll(RegExp(r'\D'), '');
+        if (digits.length == 8) _lookupCep(v);
+      },
+      validator: (v) {
+        final d = (v ?? '').replaceAll(RegExp(r'\D'), '');
+        if (d.length != 8) return 'CEP inválido.';
+        return null;
+      },
+    );
+  }
+
+  Widget _buildReadonlyInput({
+    required TextEditingController controller,
     required String hint,
-    required T? value,
-    required List<T> items,
-    required String Function(T) label,
-    required void Function(T?) onChanged,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<T>(
-          isExpanded: true,
-          hint: Text(hint, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-          value: value,
-          items: items.map((item) => DropdownMenuItem<T>(
-            value: item,
-            child: Text(label(item), style: const TextStyle(fontSize: 14)),
-          )).toList(),
-          onChanged: onChanged,
+    return TextFormField(
+      controller: controller,
+      readOnly: true,
+      decoration: InputDecoration(
+        hintText: hint,
+        filled: true,
+        fillColor: AppColors.surfaceVariant,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade200),
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       ),
     );
   }
 
-  Widget loadingDropdown(String label) {
-    return Container(
-      height: 52,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
+  Widget _buildTextInput({
+    required TextEditingController controller,
+    required String hint,
+    required TextInputType keyboardType,
+    List<TextInputFormatter>? formatters,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      inputFormatters: formatters,
+      decoration: InputDecoration(
+        hintText: hint,
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.primaryDark, width: 1.5),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-          const SizedBox(width: 10),
-          Text(label, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-        ],
-      ),
-    );
-  }
-
-  Widget disabledDropdown(String label) {
-    return Container(
-      height: 52,
-      decoration: BoxDecoration(
-        color: AppColors.surfaceVariant,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      alignment: Alignment.centerLeft,
-      child: Text(label, style: const TextStyle(fontSize: 14, color: AppColors.textDisabled)),
-    );
-  }
-
-  Widget errorDropdown(String label) {
-    return Container(
-      height: 52,
-      decoration: BoxDecoration(
-        color: AppColors.error.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      alignment: Alignment.centerLeft,
-      child: Text(label, style: const TextStyle(fontSize: 14, color: AppColors.error)),
+      validator: validator,
     );
   }
 }

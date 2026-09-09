@@ -132,8 +132,12 @@ class _GuardianHomePageState extends ConsumerState<GuardianHomePage> {
       if (!profile.onboardingComplete && mounted) {
         context.go(AppRoutes.onboarding);
       }
-    } catch (_) {
-      // Erro de rede: não bloqueia o usuário, tenta de novo na próxima abertura
+    } catch (e) {
+      // Erro de servidor (4xx/5xx): assume onboarding incompleto e redireciona
+      // Erro de rede puro (sem internet, timeout): não bloqueia o usuário
+      if (e is DioException && e.response != null && mounted) {
+        context.go(AppRoutes.onboarding);
+      }
     }
   }
 

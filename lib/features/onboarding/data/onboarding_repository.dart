@@ -3,35 +3,47 @@ import '../../../app/core/constants/api_constants.dart';
 import '../../../app/core/services/api_service.dart';
 
 class OnboardingProfile {
-  final String telefone;
-  final int? bairroId;
+  final String cpf;
+  final String cep;
+  final String logradouro;
+  final String numero;
+  final String complemento;
   final String bairroNome;
-  final int? municipioId;
-  final bool hasPhone;
-  final bool hasBairro;
+  final String cidade;
+  final String estadoUf;
+  final bool hasCpf;
+  final bool hasCep;
   final bool hasFilho;
   final bool onboardingComplete;
 
   const OnboardingProfile({
-    required this.telefone,
-    required this.bairroId,
+    required this.cpf,
+    required this.cep,
+    required this.logradouro,
+    required this.numero,
+    required this.complemento,
     required this.bairroNome,
-    required this.municipioId,
-    required this.hasPhone,
-    required this.hasBairro,
+    required this.cidade,
+    required this.estadoUf,
+    required this.hasCpf,
+    required this.hasCep,
     required this.hasFilho,
     required this.onboardingComplete,
   });
 
   factory OnboardingProfile.fromJson(Map<String, dynamic> j) {
     return OnboardingProfile(
-      telefone:           j['telefone']?.toString() ?? '',
-      bairroId:           j['bairro_id'] as int?,
-      bairroNome:         j['bairro_nome']?.toString() ?? '',
-      municipioId:        j['municipio_id'] as int?,
-      hasPhone:           j['has_phone'] == true,
-      hasBairro:          j['has_bairro'] == true,
-      hasFilho:           j['has_filho'] == true,
+      cpf:               j['cpf']?.toString()        ?? '',
+      cep:               j['cep']?.toString()        ?? '',
+      logradouro:        j['logradouro']?.toString() ?? '',
+      numero:            j['numero']?.toString()     ?? '',
+      complemento:       j['complemento']?.toString() ?? '',
+      bairroNome:        j['bairro_nome']?.toString() ?? '',
+      cidade:            j['cidade']?.toString()     ?? '',
+      estadoUf:          j['estado_uf']?.toString()  ?? '',
+      hasCpf:            j['has_cpf']  == true,
+      hasCep:            j['has_cep']  == true,
+      hasFilho:          j['has_filho'] == true,
       onboardingComplete: j['onboarding_complete'] == true,
     );
   }
@@ -47,14 +59,26 @@ class OnboardingRepository {
   }
 
   Future<void> saveProfile({
-    required String telefone,
-    required int bairroId,
+    required String cpf,
+    required String cep,
+    required String logradouro,
+    required String numero,
+    String? complemento,
+    required String bairroNome,
+    required String cidade,
+    required String estadoUf,
   }) async {
     await _api.post(
       ApiConstants.guardianProfile,
       data: {
-        'telefone': telefone,
-        'bairro_id': bairroId,
+        'cpf':         cpf,
+        'cep':         cep,
+        'logradouro':  logradouro,
+        'numero':      numero,
+        'complemento': complemento ?? '',
+        'bairro_nome': bairroNome,
+        'cidade':      cidade,
+        'estado_uf':   estadoUf,
       },
     );
   }

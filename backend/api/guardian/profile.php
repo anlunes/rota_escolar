@@ -1,8 +1,8 @@
 <?php
 /**
- * GET  /api/guardian/profile.php  → retorna perfil do responsável (telefone, bairro)
- * POST /api/guardian/profile.php  → salva telefone e bairro_id
- * Body JSON: { "telefone": "21999999999", "bairro_id": 42 }
+ * GET  /api/guardian/profile.php  → retorna perfil do responsável
+ * POST /api/guardian/profile.php  → salva CPF + endereço completo
+ * Body JSON: { cpf, cep, logradouro, numero, complemento, bairro_nome, cidade, estado_uf }
  */
 
 require_once __DIR__ . '/../../config/database.php';
@@ -29,69 +29,117 @@ try {
     // ------------------------------------------------------------------
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $stmt = $pdo->prepare("
-            SELECT u.telefone, u.bairro_id,
-                   b.nome AS bairro_nome,
-                   b.municipio_id
-            FROM usuarios u
-            LEFT JOIN bairros b ON b.id = u.bairro_id
-            WHERE u.uid = ?
+            SELECT r.responsavel_id, r.cpf, r.cep, r.logradouro, r.numero,
+                   r.complemento, r.bairro_nome, r.cidade, r.estado_uf
+            FROM responsaveis r
+            WHERE r.uid = ?
             LIMIT 1
         ");
         $stmt->execute([$uid]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$row) Response::notFound('Usuário não encontrado.');
+        if (!$row) Response::notFound('Responsável não encontrado.');
 
-        $hasPhone  = !empty(trim($row['telefone'] ?? ''));
-        $hasBairro = !empty($row['bairro_id']);
+        $hasCpf = !empty(trim($row['cpf'] ?? ''));
+        $hasCep = !empty(trim($row['cep'] ?? ''));
 
-        // Conta filhos ativos do responsável (via tabela responsaveis)
-        $rStmt = $pdo->prepare("SELECT responsavel_id FROM responsaveis WHERE uid = ? LIMIT 1");
-        $rStmt->execute([$uid]);
-        $responsavel = $rStmt->fetch(PDO::FETCH_ASSOC);
         $hasFilho = false;
-        if ($responsavel) {
+        if ($row['responsavel_id']) {
             $fStmt = $pdo->prepare("SELECT COUNT(*) FROM alunos WHERE responsavel_id = ? AND ativo = 1");
-            $fStmt->execute([$responsavel['responsavel_id']]);
+            $fStmt->execute([$row['responsavel_id']]);
             $hasFilho = ((int) $fStmt->fetchColumn()) > 0;
         }
 
         Response::success([
-            'telefone'          => $row['telefone'] ?? '',
-            'bairro_id'         => $row['bairro_id'] ? (int) $row['bairro_id'] : null,
+            'cpf'               => $row['cpf']        ?? '',
+            'cep'               => $row['cep']        ?? '',
+            'logradouro'        => $row['logradouro'] ?? '',
+            'numero'            => $row['numero']     ?? '',
+            'complemento'       => $row['complemento'] ?? '',
             'bairro_nome'       => $row['bairro_nome'] ?? '',
-            'municipio_id'      => $row['municipio_id'] ? (int) $row['municipio_id'] : null,
-            'has_phone'         => $hasPhone,
-            'has_bairro'        => $hasBairro,
+            'cidade'            => $row['cidade']     ?? '',
+            'estado_uf'         => $row['estado_uf']  ?? '',
+            'has_cpf'           => $hasCpf,
+            'has_cep'           => $hasCep,
             'has_filho'         => $hasFilho,
-            'onboarding_complete' => $hasPhone && $hasBairro,
+            'onboarding_complete' => $hasCpf && $hasCep,
         ]);
     }
 
     // ------------------------------------------------------------------
-    // POST — salva telefone e bairro_id
+    // POST — salva CPF + endereço
     // ------------------------------------------------------------------
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $body     = json_decode(file_get_contents('php://input'), true) ?? [];
-        $telefone = trim($body['telefone'] ?? '');
-        $bairroId = isset($body['bairro_id']) ? (int) $body['bairro_id'] : null;
+        $body = json_decode(file_get_contents('php://input'), true) ?? [];
 
-        if (empty($telefone)) Response::error('Telefone é obrigatório.');
-        if (!$bairroId)       Response::error('Bairro é obrigatório.');
+        $cpf        = trim($body['cpf']        ?? '');
+        $cep        = trim($body['cep']        ?? '');
+        $logradouro = trim($body['logradouro'] ?? '');
+        $numero     = trim($body['numero']     ?? '');
+        $complemento = trim($body['complemento'] ?? '');
+        $bairroNome = trim($body['bairro_nome'] ?? '');
+        $cidade     = trim($body['cidade']     ?? '');
+        $estadoUf   = trim($body['estado_uf']  ?? '');
 
-        // Valida que o bairro existe e está ativo
-        $bStmt = $pdo->prepare("SELECT id FROM bairros WHERE id = ? AND status = 'ativo' LIMIT 1");
-        $bStmt->execute([$bairroId]);
-        if (!$bStmt->fetch()) Response::error('Bairro inválido ou ainda não aprovado.');
+        if (empty($cpf))        Response::error('CPF é obrigatório.');
+        if (empty($cep))        Response::error('CEP é obrigatório.');
+        if (empty($numero))     Response::error('Número é obrigatório.');
 
+        // Normaliza CPF e CEP (remove máscara)
+        $cpfDigits = preg_replace('/\D/', '', $cpf);
+        $cepDigits = preg_replace('/\D/', '', $cep);
+
+        if (strlen($cpfDigits) !== 11) Response::error('CPF inválido.');
+        if (strlen($cepDigits) !== 8)  Response::error('CEP inválido.');
+
+        // Tenta UPDATE primeiro
         $upd = $pdo->prepare("
-            UPDATE usuarios
-               SET telefone   = ?,
-                   bairro_id  = ?,
-                   updated_at = NOW()
+            UPDATE responsaveis
+               SET cpf         = ?,
+                   cep         = ?,
+                   logradouro  = ?,
+                   numero      = ?,
+                   complemento = ?,
+                   bairro_nome = ?,
+                   cidade      = ?,
+                   estado_uf   = ?,
+                   updated_at  = NOW()
              WHERE uid = ?
         ");
-        $upd->execute([$telefone, $bairroId, $uid]);
+        $upd->execute([
+            $cpfDigits,
+            $cepDigits,
+            $logradouro ?: null,
+            $numero,
+            $complemento ?: null,
+            $bairroNome ?: null,
+            $cidade ?: null,
+            $estadoUf ?: null,
+            $uid,
+        ]);
+
+        // Se não encontrou o registro (register.php falhou antes), cria agora
+        if ($upd->rowCount() === 0) {
+            // Busca dados básicos do usuário para criar o registro
+            $uStmt = $pdo->prepare("SELECT id, nome, email, telefone FROM usuarios WHERE uid = ? LIMIT 1");
+            $uStmt->execute([$uid]);
+            $uRow = $uStmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$uRow) Response::error('Usuário não encontrado.', 404);
+
+            $pdo->prepare("
+                INSERT INTO responsaveis
+                    (usuario_id, uid, nome, email, telefone, whatsapp,
+                     cpf, cep, logradouro, numero, complemento, bairro_nome, cidade, estado_uf, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ")->execute([
+                $uRow['id'], $uid, $uRow['nome'], $uRow['email'],
+                $uRow['telefone'], $uRow['telefone'],
+                $cpfDigits, $cepDigits,
+                $logradouro ?: null, $numero, $complemento ?: null,
+                $bairroNome ?: null, $cidade ?: null, $estadoUf ?: null,
+            ]);
+        }
 
         Response::success(['saved' => true], 'Perfil atualizado com sucesso.');
     }

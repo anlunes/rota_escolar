@@ -29,8 +29,9 @@ if (!$uid || !$name || !$email) {
 }
 
 $allowedRoles = ['responsavel', 'motorista', 'admin'];
+// String vazia ou role desconhecido: default para responsavel em vez de retornar erro
 if (!in_array($role, $allowedRoles, true)) {
-    Response::error('Role inválido.');
+    $role = 'responsavel';
 }
 
 try {
@@ -69,11 +70,11 @@ try {
         $chk->execute([$uid, $email]);
         $existing = $chk->fetch();
         if ($existing) {
-            $pdo->prepare('UPDATE responsaveis SET uid=?, nome=?, email=?, telefone=?, updated_at=NOW() WHERE responsavel_id=?')
-                ->execute([$uid, $name, $email, $whatsapp, $existing['responsavel_id']]);
+            $pdo->prepare('UPDATE responsaveis SET uid=?, nome=?, email=?, telefone=?, whatsapp=?, updated_at=NOW() WHERE responsavel_id=?')
+                ->execute([$uid, $name, $email, $whatsapp, $whatsapp, $existing['responsavel_id']]);
         } else {
-            $pdo->prepare('INSERT INTO responsaveis (usuario_id, uid, nome, email, telefone, created_at) VALUES (?,?,?,?,?,NOW())')
-                ->execute([$usuarioId, $uid, $name, $email, $whatsapp]);
+            $pdo->prepare('INSERT INTO responsaveis (usuario_id, uid, nome, email, telefone, whatsapp, created_at) VALUES (?,?,?,?,?,?,NOW())')
+                ->execute([$usuarioId, $uid, $name, $email, $whatsapp, $whatsapp]);
         }
     }
 
