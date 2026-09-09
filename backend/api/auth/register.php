@@ -59,9 +59,9 @@ try {
             $pdo->prepare('UPDATE motoristas SET uid=?, nome=?, email=?, telefone=?, updated_at=NOW() WHERE motorista_id=?')
                 ->execute([$uid, $name, $email, $whatsapp, $existing['motorista_id']]);
         } else {
-            $vanCode = 'VAN' . strtoupper(substr(md5($uid), 0, 6));
-            $pdo->prepare('INSERT INTO motoristas (usuario_id, uid, nome, email, telefone, van_code, created_at) VALUES (?,?,?,?,?,?,NOW())')
-                ->execute([$usuarioId, $uid, $name, $email, $whatsapp, $vanCode]);
+            // van_code fica NULL até o motorista preencher endereço no perfil
+            $pdo->prepare('INSERT INTO motoristas (usuario_id, uid, nome, email, telefone, created_at) VALUES (?,?,?,?,?,NOW())')
+                ->execute([$usuarioId, $uid, $name, $email, $whatsapp]);
         }
     }
 

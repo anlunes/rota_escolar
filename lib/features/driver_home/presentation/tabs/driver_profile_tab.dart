@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../../app/core/constants/api_constants.dart';
 import '../../../../app/theme/app_colors.dart';
@@ -58,6 +59,9 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
   bool _uploadingDoc = false;
   bool _loadingProfile = false;
   int _perfilCacheBust = 0;
+  bool _editingDadosPessoais = false;
+  bool _isLoadingCep = false;
+  String? _cepError;
 
   String? _veiculoPlaca;
   String? _veiculoModelo;
@@ -74,6 +78,14 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
   final TextEditingController _vagasVanController      = TextEditingController();
   final TextEditingController _precoKmController       = TextEditingController();
   final TextEditingController _valorServicoController  = TextEditingController();
+  final TextEditingController _cpfController           = TextEditingController();
+  final TextEditingController _cepController           = TextEditingController();
+  final TextEditingController _logradouroController    = TextEditingController();
+  final TextEditingController _numeroController        = TextEditingController();
+  final TextEditingController _complementoController   = TextEditingController();
+  final TextEditingController _bairroNomeController    = TextEditingController();
+  final TextEditingController _cidadeController        = TextEditingController();
+  final TextEditingController _estadoUfController      = TextEditingController();
 
   @override
   void initState() {
@@ -148,6 +160,14 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
     _vagasVanController.dispose();
     _precoKmController.dispose();
     _valorServicoController.dispose();
+    _cpfController.dispose();
+    _cepController.dispose();
+    _logradouroController.dispose();
+    _numeroController.dispose();
+    _complementoController.dispose();
+    _bairroNomeController.dispose();
+    _cidadeController.dispose();
+    _estadoUfController.dispose();
     super.dispose();
   }
 
@@ -404,6 +424,14 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
             _prefMunicipioId   = municipioId;
             _vanCode      = data['van_code'];
             _whatsapp     = data['whatsapp'];
+            _cpfController.text          = (data['cpf']         as String?) ?? '';
+            _cepController.text          = (data['cep']         as String?) ?? '';
+            _logradouroController.text   = (data['logradouro']  as String?) ?? '';
+            _numeroController.text       = (data['numero']      as String?) ?? '';
+            _complementoController.text  = (data['complemento'] as String?) ?? '';
+            _bairroNomeController.text   = (data['bairro_nome'] as String?) ?? '';
+            _cidadeController.text       = (data['cidade']      as String?) ?? '';
+            _estadoUfController.text     = (data['estado_uf']   as String?) ?? '';
             _alunosAtivos = int.tryParse(data['alunos_ativos']?.toString() ?? '0') ?? 0;
             _alunosManha = int.tryParse(data['alunos_manha']?.toString() ?? '0') ?? 0;
             _alunosTarde = int.tryParse(data['alunos_tarde']?.toString() ?? '0') ?? 0;
@@ -459,6 +487,48 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
     }
   }
 
+  Future<void> _lookupCep(String value) async {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length != 8) return;
+    setState(() { _isLoadingCep = true; _cepError = null; });
+    try {
+      final response = await Dio().get('https://viacep.com.br/ws/$digits/json/');
+      final data = response.data as Map<String, dynamic>;
+      if (data['erro'] == true) {
+        setState(() => _cepError = 'CEP não encontrado.');
+        return;
+      }
+      setState(() {
+        _logradouroController.text = data['logradouro'] ?? '';
+        _bairroNomeController.text = data['bairro']     ?? '';
+        _cidadeController.text     = data['localidade'] ?? '';
+        _estadoUfController.text   = data['uf']         ?? '';
+      });
+    } catch (_) {
+      setState(() => _cepError = 'Não foi possível consultar o CEP.');
+    } finally {
+      if (mounted) setState(() => _isLoadingCep = false);
+    }
+  }
+
+  String _maskCpf(String cpf) {
+    final d = cpf.replaceAll(RegExp(r'\D'), '');
+    if (d.length != 11) return cpf.isEmpty ? 'Não informado' : cpf;
+    return '${d.substring(0, 3)}.${d.substring(3, 6)}.${d.substring(6, 9)}-${d.substring(9, 11)}';
+  }
+
+  String get _enderecoDisplay {
+    final parts = <String>[
+      if (_logradouroController.text.isNotEmpty) _logradouroController.text,
+      if (_numeroController.text.isNotEmpty)     _numeroController.text,
+      if (_complementoController.text.isNotEmpty) _complementoController.text,
+      if (_bairroNomeController.text.isNotEmpty) _bairroNomeController.text,
+      if (_cidadeController.text.isNotEmpty)
+        '${_cidadeController.text}${_estadoUfController.text.isNotEmpty ? '/${_estadoUfController.text}' : ''}',
+    ];
+    return parts.isEmpty ? 'Não informado' : parts.join(', ');
+  }
+
   Future<void> _saveBairros() async {
     final dio = Dio();
     final token = await FirebaseAuth.instance.currentUser?.getIdToken();
@@ -472,6 +542,14 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
         'vagas_van':     int.tryParse(_vagasVanController.text.trim()) ?? 0,
         'preco_km':      double.tryParse(_precoKmController.text.trim().replaceAll(',', '.')) ?? 0,
         'valor_servico': double.tryParse(_valorServicoController.text.trim().replaceAll(',', '.')) ?? 0,
+        'cpf':           _cpfController.text.replaceAll(RegExp(r'\D'), ''),
+        'cep':           _cepController.text.replaceAll(RegExp(r'\D'), ''),
+        'logradouro':    _logradouroController.text.trim(),
+        'numero':        _numeroController.text.trim(),
+        'complemento':   _complementoController.text.trim(),
+        'bairro_nome':   _bairroNomeController.text.trim(),
+        'cidade':        _cidadeController.text.trim(),
+        'estado_uf':     _estadoUfController.text.trim(),
       },
       options: Options(headers: token != null ? {'Authorization': 'Bearer $token'} : {}),
     );
@@ -619,6 +697,133 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
                     ?.copyWith(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 24),
+
+              // ── Dados Pessoais ─────────────────────────────────────
+              Row(
+                children: [
+                  Expanded(child: _SectionHeader(title: 'Dados Pessoais')),
+                  IconButton(
+                    onPressed: () => setState(() => _editingDadosPessoais = !_editingDadosPessoais),
+                    icon: Icon(
+                      _editingDadosPessoais ? Icons.close : Icons.edit_outlined,
+                      size: 18,
+                      color: AppColors.primaryDark,
+                    ),
+                    tooltip: _editingDadosPessoais ? 'Cancelar' : 'Editar',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (_editingDadosPessoais) ...[
+                TextField(
+                  controller: _cpfController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [_CpfFormatter()],
+                  decoration: const InputDecoration(
+                    labelText: 'CPF',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _cepController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [_CepFormatter()],
+                  onChanged: _lookupCep,
+                  decoration: InputDecoration(
+                    labelText: 'CEP',
+                    prefixIcon: const Icon(Icons.location_on_outlined),
+                    suffixIcon: _isLoadingCep
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : null,
+                    errorText: _cepError,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _EditableField(
+                  label: 'Logradouro',
+                  controller: _logradouroController,
+                  icon: Icons.edit_road_outlined,
+                  enabled: true,
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 110,
+                      child: _EditableField(
+                        label: 'Número',
+                        controller: _numeroController,
+                        icon: Icons.tag_outlined,
+                        enabled: true,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _EditableField(
+                        label: 'Complemento',
+                        controller: _complementoController,
+                        icon: Icons.info_outline,
+                        enabled: true,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _EditableField(
+                  label: 'Bairro',
+                  controller: _bairroNomeController,
+                  icon: Icons.holiday_village_outlined,
+                  enabled: false,
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: _EditableField(
+                        label: 'Cidade',
+                        controller: _cidadeController,
+                        icon: Icons.location_city_outlined,
+                        enabled: false,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 72,
+                      child: _EditableField(
+                        label: 'UF',
+                        controller: _estadoUfController,
+                        icon: Icons.map_outlined,
+                        enabled: false,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ] else ...[
+                _EditableField(
+                  label: 'CPF',
+                  controller: TextEditingController(text: _maskCpf(_cpfController.text)),
+                  icon: Icons.badge_outlined,
+                  enabled: false,
+                ),
+                const SizedBox(height: 8),
+                _EditableField(
+                  label: 'Endereço',
+                  controller: TextEditingController(text: _enderecoDisplay),
+                  icon: Icons.home_outlined,
+                  enabled: false,
+                ),
+              ],
+              const SizedBox(height: 20),
 
               // Location fields
               Row(
@@ -1030,6 +1235,45 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
             ),
           ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Formatters
+// ---------------------------------------------------------------------------
+
+class _CpfFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue _, TextEditingValue next) {
+    final digits = next.text.replaceAll(RegExp(r'\D'), '');
+    final buf = StringBuffer();
+    for (int i = 0; i < digits.length && i < 11; i++) {
+      if (i == 3 || i == 6) buf.write('.');
+      if (i == 9) buf.write('-');
+      buf.write(digits[i]);
+    }
+    final str = buf.toString();
+    return next.copyWith(
+      text: str,
+      selection: TextSelection.collapsed(offset: str.length),
+    );
+  }
+}
+
+class _CepFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue _, TextEditingValue next) {
+    final digits = next.text.replaceAll(RegExp(r'\D'), '');
+    final buf = StringBuffer();
+    for (int i = 0; i < digits.length && i < 8; i++) {
+      if (i == 5) buf.write('-');
+      buf.write(digits[i]);
+    }
+    final str = buf.toString();
+    return next.copyWith(
+      text: str,
+      selection: TextSelection.collapsed(offset: str.length),
     );
   }
 }
