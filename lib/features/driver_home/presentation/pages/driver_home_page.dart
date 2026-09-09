@@ -10,7 +10,9 @@ import '../tabs/driver_route_tab.dart';
 import '../tabs/driver_financial_tab.dart';
 import '../tabs/driver_messages_tab.dart';
 import '../tabs/driver_opportunities_tab.dart';
+import '../tabs/driver_frota_tab.dart';
 import '../../../../features/auth/application/auth_state_provider.dart';
+import '../../../../app/core/constants/status_constants.dart';
 import '../../../../app/theme/app_colors.dart';
 
 class DriverHomePage extends ConsumerStatefulWidget {
@@ -92,6 +94,8 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
     final driverState = ref.watch(driverHomeProvider);
     final talkCount = driverState.talkRequestCount;
     final user = ref.watch(authNotifierProvider).user;
+    final role = ref.watch(authNotifierProvider).role;
+    final isGestor = role == UserRole.gestor;
 
     final tabs = [
       const DriverProfileTab(),
@@ -99,6 +103,7 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
       const DriverFinancialTab(),
       const DriverMessagesTab(),
       const DriverOpportunitiesTab(),
+      if (isGestor) const DriverFrotaTab(),
     ];
 
     return Scaffold(
@@ -180,18 +185,26 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
             activeIcon: Icon(Icons.group_add),
             label: 'Vagas',
           ),
+          if (isGestor)
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.garage_outlined),
+              activeIcon: Icon(Icons.garage),
+              label: 'Minha Frota',
+            ),
         ],
       ),
     );
   }
 
   String _tabTitle(int index) {
+    final isGestor = ref.read(authNotifierProvider).role == UserRole.gestor;
     return switch (index) {
       0 => 'Meu Perfil',
       1 => 'Rota do Dia',
       2 => 'Financeiro',
       3 => 'Mensagens',
       4 => 'Oportunidades',
+      5 when isGestor => 'Minha Frota',
       _ => 'Rota Escolar',
     };
   }

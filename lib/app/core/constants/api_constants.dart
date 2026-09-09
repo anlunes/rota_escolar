@@ -71,6 +71,7 @@ class ApiConstants {
   static const String driverOpportunities = '/api/drivers/opportunities.php';
   static const String driversAvailable    = '/api/drivers/available.php';
   static const String driverQuote         = '/api/drivers/quote.php';
+  static const String driverFrota         = '/api/drivers/frota.php';
 
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 30);
