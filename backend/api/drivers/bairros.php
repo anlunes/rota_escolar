@@ -190,11 +190,11 @@ try {
                     $vanCount = 1;
                 }
 
-                // Formato: UF(2) + MUN(3) + SEQ(4) = 9 caracteres
-                // Ex: RJ0010001 = RJ, município 001, 1º motorista
-                $vanCode = $uf
-                    . str_pad($seq,      3, '0', STR_PAD_LEFT)
-                    . str_pad($vanCount, 4, '0', STR_PAD_LEFT);
+                // Formato: MUN(3) + UF(2) + SEQ(4) = 9 caracteres
+                // Ex: 001RJ0001 = município 001, RJ, 1º motorista
+                $vanCode = str_pad($seq,      3, '0', STR_PAD_LEFT)
+                         . $uf
+                         . str_pad($vanCount, 4, '0', STR_PAD_LEFT);
 
                 $pdo->prepare("UPDATE vans SET van_code = ?, updated_at = NOW() WHERE motorista_id = ?")
                     ->execute([$vanCode, $motoristaId]);
