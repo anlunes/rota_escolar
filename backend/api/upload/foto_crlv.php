@@ -226,16 +226,35 @@ try {
     $pdo = Database::getInstance();
 
     if ($referencia === 'motorista') {
-        $sets  = ['crlv_url = ?', 'updated_at = NOW()'];
-        $params = [$url_publica];
+        // Busca motorista_id a partir do uid
+        $mRow = $pdo->prepare("SELECT motorista_id FROM motoristas WHERE uid = ? LIMIT 1");
+        $mRow->execute([$referencia_id]);
+        $motoristaId = $mRow->fetchColumn();
 
-        if ($crlv_exercicio !== null) { $sets[] = 'crlv_exercicio = ?';  $params[] = $crlv_exercicio; }
-        if ($veiculo_placa  !== null) { $sets[] = 'veiculo_placa = ?';   $params[] = $veiculo_placa;  }
-        if ($veiculo_modelo !== null) { $sets[] = 'veiculo_modelo = ?';  $params[] = $veiculo_modelo; }
+        if ($motoristaId) {
+            // Verifica se já existe van para este motorista
+            $vRow = $pdo->prepare("SELECT van_id FROM vans WHERE motorista_id = ? LIMIT 1");
+            $vRow->execute([$motoristaId]);
+            $vanId = $vRow->fetchColumn();
 
-        $params[] = $referencia_id;
-        $stmt = $pdo->prepare("UPDATE motoristas SET " . implode(', ', $sets) . " WHERE uid = ?");
-        $stmt->execute($params);
+            if ($vanId) {
+                // Atualiza van existente
+                $sets   = ['crlv_url = ?', 'updated_at = NOW()'];
+                $params = [$url_publica];
+                if ($crlv_exercicio !== null) { $sets[] = 'crlv_exercicio = ?'; $params[] = $crlv_exercicio; }
+                if ($veiculo_placa  !== null) { $sets[] = 'veiculo_placa = ?';  $params[] = $veiculo_placa;  }
+                if ($veiculo_modelo !== null) { $sets[] = 'veiculo_modelo = ?'; $params[] = $veiculo_modelo; }
+                $params[] = $vanId;
+                $pdo->prepare("UPDATE vans SET " . implode(', ', $sets) . " WHERE van_id = ?")
+                    ->execute($params);
+            } else {
+                // Cria nova van para este motorista com os dados do CRLV
+                $pdo->prepare("
+                    INSERT INTO vans (motorista_id, crlv_url, crlv_exercicio, veiculo_placa, veiculo_modelo)
+                    VALUES (?, ?, ?, ?, ?)
+                ")->execute([$motoristaId, $url_publica, $crlv_exercicio, $veiculo_placa, $veiculo_modelo]);
+            }
+        }
     }
 } catch (PDOException $e) {
     error_log('[upload/foto_crlv] DB error: ' . $e->getMessage());

@@ -264,6 +264,13 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
           setState(() {
             _uploadedDocs[tipo] = true;
             _documentUrls[tipo] = response.data['url'] ?? '';
+            // Atualiza placa e modelo imediatamente após upload do CRLV
+            if (tipo == 'crlv') {
+              final placa  = response.data['veiculo_placa']?.toString();
+              final modelo = response.data['veiculo_modelo']?.toString();
+              if (placa  != null && placa.isNotEmpty)  _veiculoPlaca  = placa;
+              if (modelo != null && modelo.isNotEmpty) _veiculoModelo = modelo;
+            }
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(

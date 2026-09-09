@@ -21,10 +21,11 @@ try {
     $sql = "
         SELECT DISTINCT
             m.motorista_id AS id, m.nome AS name, m.whatsapp,
-            m.van_code, m.foto_url AS photo_url,
+            v.van_code, m.foto_url AS photo_url,
             AVG(av.nota) AS rating,
             COUNT(av.avaliacao_id) AS review_count
         FROM motoristas m
+        LEFT JOIN vans v ON v.motorista_id = m.motorista_id
         LEFT JOIN avaliacoes av ON av.motorista_id = m.motorista_id
     ";
     $params = [];

@@ -30,6 +30,21 @@ try {
     $driver = $stmt->fetch();
     if (!$driver) Response::notFound('Motorista não encontrado.');
 
+    // Dados da van (agora na tabela vans, não em motoristas)
+    $v = $pdo->prepare("
+        SELECT van_code, veiculo_placa, veiculo_modelo,
+               crlv_url, crlv_exercicio, vagas_van,
+               seguro_url, autorizacao_url
+        FROM vans WHERE motorista_id = ? LIMIT 1
+    ");
+    $v->execute([$driver['motorista_id']]);
+    $van = $v->fetch();
+    if ($van) {
+        foreach ($van as $key => $val) {
+            $driver[$key] = $val;
+        }
+    }
+
     // Bairros atendidos (nova estrutura)
     $b = $pdo->prepare("
         SELECT b.nome AS bairro, mu.nome AS municipio, e.uf AS estado

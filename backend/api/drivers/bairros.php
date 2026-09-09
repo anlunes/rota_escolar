@@ -23,12 +23,14 @@ try {
     $pdo = Database::getInstance();
 
     $mStmt = $pdo->prepare("
-        SELECT m.motorista_id, m.pref_estado_id, m.pref_municipio_id, m.van_code, m.whatsapp,
-               m.vagas_van, m.preco_km, m.valor_servico,
+        SELECT m.motorista_id, m.pref_estado_id, m.pref_municipio_id, m.whatsapp,
+               m.preco_km, m.valor_servico,
                m.cpf, m.cep, m.logradouro, m.numero, m.complemento,
                m.bairro_nome, m.cidade, m.estado_uf,
+               v.van_id, v.van_code, v.vagas_van,
                u.telefone
         FROM motoristas m
+        LEFT JOIN vans v ON v.motorista_id = m.motorista_id
         LEFT JOIN usuarios u ON u.uid = m.uid
         WHERE m.uid = ? LIMIT 1
     ");
@@ -121,13 +123,12 @@ try {
             $ins->execute([$motoristaId, (int)$bid]);
         }
 
-        // Salva preferência de localização, WhatsApp e capacidade da van
+        // Salva preferência de localização, WhatsApp e dados pessoais do motorista
         $pdo->prepare("
             UPDATE motoristas SET
                 pref_estado_id    = ?,
                 pref_municipio_id = ?,
                 whatsapp          = ?,
-                vagas_van         = COALESCE(?, vagas_van),
                 preco_km          = COALESCE(?, preco_km),
                 valor_servico     = COALESCE(?, valor_servico),
                 cpf               = COALESCE(?, cpf),
@@ -141,11 +142,20 @@ try {
             WHERE motorista_id    = ?
         ")->execute([
             $estadoId, $municipioId, $whatsapp,
-            $vagasVan, $precoKm, $valorServico,
+            $precoKm, $valorServico,
             $cpf, $cep, $logradouro, $numero, $complemento,
             $bairroNome, $cidade, $estadoUf,
             $motoristaId,
         ]);
+
+        // Salva vagas_van na tabela vans (cria a linha se ainda não existir)
+        $pdo->prepare("
+            INSERT INTO vans (motorista_id, vagas_van)
+            VALUES (?, ?)
+            ON DUPLICATE KEY UPDATE
+                vagas_van  = VALUES(vagas_van),
+                updated_at = NOW()
+        ")->execute([$motoristaId, $vagasVan ?? 0]);
 
         $pdo->commit();
 
@@ -186,7 +196,7 @@ try {
                     . str_pad($seq,      3, '0', STR_PAD_LEFT)
                     . str_pad($vanCount, 4, '0', STR_PAD_LEFT);
 
-                $pdo->prepare("UPDATE motoristas SET van_code = ? WHERE motorista_id = ?")
+                $pdo->prepare("UPDATE vans SET van_code = ?, updated_at = NOW() WHERE motorista_id = ?")
                     ->execute([$vanCode, $motoristaId]);
 
             } catch (PDOException $eVan) {

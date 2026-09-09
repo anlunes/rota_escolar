@@ -26,7 +26,12 @@ $uid = $payload['sub'] ?? $payload['user_id'] ?? null;
 try {
     $pdo = Database::getInstance();
 
-    $mStmt = $pdo->prepare("SELECT motorista_id, van_code FROM motoristas WHERE uid = ? LIMIT 1");
+    $mStmt = $pdo->prepare("
+        SELECT m.motorista_id, v.van_code
+        FROM motoristas m
+        LEFT JOIN vans v ON v.motorista_id = m.motorista_id
+        WHERE m.uid = ? LIMIT 1
+    ");
     $mStmt->execute([$uid]);
     $motorista = $mStmt->fetch();
     if (!$motorista) Response::error('Motorista não encontrado.', 404);
