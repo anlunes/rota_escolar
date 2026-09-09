@@ -28,7 +28,7 @@ if (!$uid || !$name || !$email) {
     Response::error('BODY: ' . file_get_contents('php://input') . ' | uid=' . $uid . ' name=' . $name . ' email=' . $email);
 }
 
-$allowedRoles = ['responsavel', 'motorista', 'admin'];
+$allowedRoles = ['responsavel', 'motorista', 'gestor', 'contratado', 'admin'];
 // String vazia ou role desconhecido: default para responsavel em vez de retornar erro
 if (!in_array($role, $allowedRoles, true)) {
     $role = 'responsavel';
@@ -51,7 +51,7 @@ try {
         $usuarioId = $pdo->lastInsertId();
     }
 
-    if ($role === 'motorista') {
+    if (in_array($role, ['motorista', 'gestor', 'contratado'], true)) {
         $chk = $pdo->prepare('SELECT motorista_id FROM motoristas WHERE uid = ? OR email = ? LIMIT 1');
         $chk->execute([$uid, $email]);
         $existing = $chk->fetch();

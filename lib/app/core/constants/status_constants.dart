@@ -50,12 +50,20 @@ enum RoutePeriod {
 enum UserRole {
   guardian('responsavel', 'Responsável'),
   driver('motorista', 'Motorista'),
+  gestor('gestor', 'Gestor de Frota'),
+  contratado('contratado', 'Motorista Contratado'),
   admin('admin', 'Administrador');
 
   final String value;
   final String label;
 
   const UserRole(this.value, this.label);
+
+  /// Retorna true para qualquer role que usa a tela de motorista
+  bool get isDriverRole =>
+      this == UserRole.driver ||
+      this == UserRole.gestor ||
+      this == UserRole.contratado;
 
   static UserRole fromValue(String? value) {
     return UserRole.values.firstWhere(

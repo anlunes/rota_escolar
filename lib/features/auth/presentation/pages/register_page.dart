@@ -23,6 +23,81 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   UserRole _selectedRole = UserRole.guardian;
   bool _obscurePass = true;
 
+  /// Abre o diálogo de 2 perguntas para determinar o role do transportador.
+  Future<void> _selectTransporterRole() async {
+    // Pergunta 1: proprietário da van?
+    final isOwner = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Você é proprietário da van?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Informe se a van pertence a você ou se você é contratado por uma empresa.',
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Sim, a van é minha'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.text,
+                side: const BorderSide(color: AppColors.textSecondary),
+              ),
+              child: const Text('Não, sou contratado'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (isOwner == null || !mounted) return;
+
+    if (!isOwner) {
+      setState(() => _selectedRole = UserRole.contratado);
+      return;
+    }
+
+    // Pergunta 2: possui mais de uma van?
+    final hasMultiple = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Você possui mais de uma van?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Selecione "Sim" se gerencia uma frota com múltiplos veículos.',
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Sim, tenho uma frota'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.text,
+                side: const BorderSide(color: AppColors.textSecondary),
+              ),
+              child: const Text('Não, tenho só uma van'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (hasMultiple == null || !mounted) return;
+
+    setState(() =>
+        _selectedRole = hasMultiple ? UserRole.gestor : UserRole.driver);
+  }
+
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -201,12 +276,13 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _RoleTile(
-                        label: 'Motorista',
-                        subtitle: 'Realizo o transporte',
+                        label: 'Transportador',
+                        subtitle: _selectedRole.isDriverRole
+                            ? _selectedRole.label
+                            : 'Realizo o transporte',
                         icon: Icons.drive_eta,
-                        selected: _selectedRole == UserRole.driver,
-                        onTap: () =>
-                            setState(() => _selectedRole = UserRole.driver),
+                        selected: _selectedRole.isDriverRole,
+                        onTap: _selectTransporterRole,
                       ),
                     ),
                   ],

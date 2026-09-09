@@ -100,7 +100,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // Handle terms-done: mark as accepted and go home
         if (loc == AppRoutes.termsDone) {
           ref.read(termsAcceptedProvider.notifier).markAccepted();
-          return authState.role == UserRole.driver
+          return (authState.role?.isDriverRole ?? false)
               ? AppRoutes.driverHome
               : AppRoutes.guardianHome;
         }
@@ -111,24 +111,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             loc == AppRoutes.register) {
           final termsAccepted = ref.read(termsAcceptedProvider);
           if (!termsAccepted) return AppRoutes.terms;
-          return authState.role == UserRole.driver
+          return (authState.role?.isDriverRole ?? false)
               ? AppRoutes.driverHome
               : AppRoutes.guardianHome;
         }
 
         // Guard by role
         if (loc == AppRoutes.driverHome &&
-            authState.role != UserRole.driver) {
+            !(authState.role?.isDriverRole ?? false)) {
           return AppRoutes.guardianHome;
         }
         if (loc == AppRoutes.guardianHome &&
-            authState.role == UserRole.driver) {
+            (authState.role?.isDriverRole ?? false)) {
           return AppRoutes.driverHome;
         }
 
         // Onboarding só é acessível por responsáveis
         if (loc == AppRoutes.onboarding &&
-            authState.role == UserRole.driver) {
+            (authState.role?.isDriverRole ?? false)) {
           return AppRoutes.driverHome;
         }
       }
